@@ -6,7 +6,7 @@
         "id": "byok-anthropic",
         "provider": "anthropic",
         "base_url": "https://api.anthropic.com",
-        "key": "env:FID_ANTHROPIC_KEY",
+        "key": "sealed-runtime",
         "tpm_budget": 0
       }
     ],

@@ -8,17 +8,23 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"fidrouter/internal/config"
+	"fidrouter/internal/enc"
 	"fidrouter/internal/kms"
 	"fidrouter/internal/tee"
 	"fidrouter/internal/token"
@@ -36,6 +42,8 @@ func main() {
 		cmdSealPool()
 	case "mint":
 		cmdMint(os.Args[2:])
+	case "seal-byok": // customer seals an upstream key to the attested enclave (operator-blind)
+		cmdSealBYOK(os.Args[2:])
 	case "remeasure": // overwrite ExpectedMeasurement (e.g. to a real MRTD) before seal-pool
 		k := loadKeys()
 		k.ExpectedMeasurement = os.Args[2]
@@ -44,6 +52,97 @@ func main() {
 	default:
 		fmt.Println("unknown subcommand:", os.Args[1])
 		os.Exit(2)
+	}
+}
+
+// cmdSealBYOK is the KEY OWNER's tool: it verifies the enclave, then encrypts the
+// upstream key to the enclave's per-boot sealing pubkey so ONLY that measured
+// enclave can open it. The operator only ever handles the ciphertext → operator-blind.
+func cmdSealBYOK(args []string) {
+	fs := flag.NewFlagSet("seal-byok", flag.ExitOnError)
+	endpoint := fs.String("endpoint", "http://127.0.0.1:9090", "enclave base URL")
+	keyStr := fs.String("key", "", "upstream key to seal (else read stdin)")
+	pin := fs.String("pin", "", "expected measurement (optional but recommended)")
+	account := fs.String("account", "", "if set with -token, also POST /byok to provision it")
+	tok := fs.String("token", "", "capability token (authority for /byok submit)")
+	_ = fs.Parse(args)
+
+	upstream := *keyStr
+	if upstream == "" {
+		b, _ := io.ReadAll(os.Stdin)
+		upstream = strings.TrimSpace(string(b))
+	}
+	if upstream == "" {
+		fatal(fmt.Errorf("no upstream key (pass -key or pipe via stdin)"))
+	}
+
+	// 1) attestation → identity pub (+ optional measurement pin)
+	nonce := make([]byte, 16)
+	_, _ = rand.Read(nonce)
+	var q struct {
+		Measurement string `json:"measurement"`
+		IdentityPub []byte `json:"identity_pub"`
+	}
+	getJSON(*endpoint+"/attestation?nonce="+hex.EncodeToString(nonce), &q)
+	if *pin != "" && q.Measurement != *pin {
+		fatal(fmt.Errorf("measurement mismatch — got %s want %s (refusing to seal to an unknown build)", q.Measurement, *pin))
+	}
+	// 2) sealing pub, signed by the (attested) identity key
+	var sp struct {
+		SealingPub  string `json:"sealing_pub"`
+		Sig         string `json:"sig"`
+		IdentityPub string `json:"identity_pub"`
+	}
+	getJSON(*endpoint+"/sealing", &sp)
+	sealingPub, _ := base64.StdEncoding.DecodeString(sp.SealingPub)
+	sig, _ := base64.StdEncoding.DecodeString(sp.Sig)
+	idpub := q.IdentityPub // from the (mock) quote; on Confidential Space it's in /sealing
+	if len(idpub) == 0 {
+		idpub, _ = base64.StdEncoding.DecodeString(sp.IdentityPub)
+	}
+	if !ed25519.Verify(ed25519.PublicKey(idpub), sealingPub, sig) {
+		fatal(fmt.Errorf("sealing pubkey signature invalid — not signed by the attested enclave identity"))
+	}
+	// NOTE: full CS attestation-token verification (that this identity belongs to the
+	// pinned measurement) is done by the verify SDK on the inference path; here we pin
+	// the measurement and verify the sealing-key signature.
+	// 3) seal upstream key to sealing pub: blob = client_eph_pub || AES-GCM(shared, key)
+	eph, err := enc.NewX25519()
+	if err != nil {
+		fatal(err)
+	}
+	k, err := enc.SharedKey(eph, sealingPub, "fid-byok-v1")
+	if err != nil {
+		fatal(err)
+	}
+	ct, err := enc.Seal(k, []byte(upstream), []byte("fid-byok-v1"))
+	if err != nil {
+		fatal(err)
+	}
+	sealed := "sealed:" + base64.StdEncoding.EncodeToString(append(eph.PublicKey().Bytes(), ct...))
+
+	if *account != "" && *tok != "" { // submit to /byok
+		body, _ := json.Marshal(map[string]string{"token": *tok, "account": *account, "sealed": sealed})
+		resp, err := http.Post(*endpoint+"/byok", "application/json", bytes.NewReader(body))
+		if err != nil {
+			fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		fmt.Printf("POST /byok -> %d %s\n", resp.StatusCode, strings.TrimSpace(string(b)))
+	} else {
+		fmt.Println(sealed) // hand this ciphertext to the operator; they never see plaintext
+	}
+}
+
+func getJSON(url string, v any) {
+	resp, err := http.Get(url)
+	if err != nil {
+		fatal(err)
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
+		fatal(err)
 	}
 }
 

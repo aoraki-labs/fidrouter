@@ -13,6 +13,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
@@ -26,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"fidrouter/internal/config"
@@ -49,12 +51,23 @@ type upstreamReq struct {
 }
 
 type server struct {
-	at        tee.Attester
-	km        kms.KeyProvider
-	rt        *routing.Router
-	cpPub     ed25519.PublicKey
-	upstream  string
-	http      *http.Client
+	at       tee.Attester
+	km       kms.KeyProvider
+	rt       *routing.Router
+	cpPub    ed25519.PublicKey
+	upstream string
+	http     *http.Client
+
+	// sealed BYOK (operator-blind): a per-boot X25519 keypair generated INSIDE
+	// the enclave (RAM only, never persisted, operator never sees the private
+	// half). Its public half is served at /sealing, SIGNED by the attested
+	// identity key, so the key owner can encrypt their upstream key to exactly
+	// this measured enclave. Ciphertext is submitted at runtime to /byok and the
+	// plaintext lives only in RAM. On reboot the keypair changes → re-seal.
+	sealPriv *ecdh.PrivateKey
+	sealPub  []byte
+	byokMu   sync.Mutex
+	byok     map[string]string // accountID -> plaintext upstream key (RAM only)
 }
 
 func main() {
@@ -138,6 +151,12 @@ func main() {
 				if strings.HasPrefix(key, "env:") {
 					key = os.Getenv(strings.TrimPrefix(key, "env:"))
 				}
+				// "sealed-runtime": operator-blind BYOK. No key in config/image/env;
+				// the key owner seals it to /sealing and submits ciphertext to /byok
+				// at runtime. Sealed stays empty → resolveKey() reads the RAM store.
+				if key == "sealed-runtime" {
+					key = ""
+				}
 				pools[id] = append(pools[id], &routing.Account{
 					ID: a.ID, Provider: a.Provider, BaseURL: a.BaseURL, Sealed: []byte(key), TPMBudget: a.TPMBudget,
 				})
@@ -160,15 +179,26 @@ func main() {
 	salt := make([]byte, 16)
 	_, _ = rand.Read(salt)
 
+	// per-boot sealing keypair (RAM only) for operator-blind BYOK
+	sealPriv, err := enc.NewX25519()
+	if err != nil {
+		log.Fatalf("fid-proxy: sealing key: %v", err)
+	}
+
 	s := &server{
 		at: at, km: km, rt: routing.New(salt, pools),
 		cpPub:    ed25519.PublicKey(cpPubBytes),
 		upstream: envOr("UPSTREAM_URL", "http://127.0.0.1:9101/call"),
 		http:     &http.Client{Timeout: 120 * time.Second}, // real Claude turns can run tens of seconds
+		sealPriv: sealPriv,
+		sealPub:  sealPriv.PublicKey().Bytes(),
+		byok:     map[string]string{},
 	}
 
 	http.HandleFunc("/", s.handleRoot)
 	http.HandleFunc("/attestation", s.handleAttest)
+	http.HandleFunc("/sealing", s.handleSealing)                     // operator-blind BYOK: signed sealing pubkey
+	http.HandleFunc("/byok", s.handleByok)                           // submit a runtime-sealed upstream key
 	http.HandleFunc("/v1/infer", s.handleInfer)                     // sealed/attested path (verify SDK)
 	http.HandleFunc("/v1/chat/completions", s.handleChatCompletions) // OpenAI-compatible drop-in
 	http.HandleFunc("/v1/models", s.handleModels)
@@ -261,7 +291,7 @@ func (s *server) handleInfer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 5) attestation-gated key release (fails if measurement != expected).
-	upKey, err := s.km.Unseal(acct.Sealed, s.at.Measurement())
+	upKey, err := s.resolveKey(acct)
 	if err != nil {
 		http.Error(w, "kms: "+err.Error(), 502)
 		return
@@ -539,7 +569,7 @@ func (s *server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no upstream account in pool "+claims.Pool, 502)
 		return
 	}
-	upKey, err := s.km.Unseal(acct.Sealed, s.at.Measurement())
+	upKey, err := s.resolveKey(acct)
 	if err != nil {
 		http.Error(w, "kms: "+err.Error(), 502)
 		return
@@ -616,6 +646,84 @@ func shortMeas(s string) string {
 		return s[:12]
 	}
 	return s
+}
+
+// --- operator-blind sealed BYOK -----------------------------------------------
+
+// resolveKey returns the upstream key for an account: from KMS/passthrough
+// unseal, or — for "sealed-runtime" accounts (empty Sealed) — from the RAM BYOK
+// store populated by /byok. The operator never has the plaintext.
+func (s *server) resolveKey(acct *routing.Account) ([]byte, error) {
+	k, err := s.km.Unseal(acct.Sealed, s.at.Measurement())
+	if err != nil {
+		return nil, err
+	}
+	if len(k) == 0 {
+		s.byokMu.Lock()
+		v := s.byok[acct.ID]
+		s.byokMu.Unlock()
+		if v == "" {
+			return nil, fmt.Errorf("account %q has no upstream key yet — seal one to /sealing then POST /byok", acct.ID)
+		}
+		return []byte(v), nil
+	}
+	return k, nil
+}
+
+// handleSealing publishes the per-boot sealing public key, SIGNED by the attested
+// identity key. Chain of trust: /attestation proves measurement + identity pub;
+// this sig proves the sealing pub belongs to that same measured enclave. The key
+// owner encrypts their upstream key to sealing_pub → only this enclave can open it.
+func (s *server) handleSealing(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]any{
+		"sealing_pub":  base64.StdEncoding.EncodeToString(s.sealPub),
+		"sig":          base64.StdEncoding.EncodeToString(s.at.Sign(s.sealPub)), // Sign(identity, sealing_pub)
+		"identity_pub": base64.StdEncoding.EncodeToString(s.at.IdentityPub()),
+		"measurement":  s.at.Measurement(),
+		"info":         "fid-byok-v1",
+	})
+}
+
+// handleByok accepts a runtime-sealed upstream key (ciphertext sealed to sealing_pub)
+// and holds the plaintext in RAM only. Requires a CP-signed capability token as
+// authority. On reboot the sealing key changes, so this must be re-submitted.
+func (s *server) handleByok(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Token   string `json:"token"`
+		Account string `json:"account"`
+		Sealed  string `json:"sealed"` // base64 of (client_eph_pub[32] || AES-GCM ciphertext)
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		http.Error(w, "bad request", 400)
+		return
+	}
+	if _, err := token.Verify(s.cpPub, in.Token); err != nil {
+		http.Error(w, "unauthorized: "+err.Error(), 401)
+		return
+	}
+	blob, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(in.Sealed, "sealed:"))
+	if err != nil || len(blob) < 33 {
+		http.Error(w, "bad sealed blob", 400)
+		return
+	}
+	pt, err := s.unsealBYOK(blob)
+	if err != nil {
+		http.Error(w, "unseal failed (sealed to a different enclave/boot? re-fetch /sealing and re-seal): "+err.Error(), 400)
+		return
+	}
+	s.byokMu.Lock()
+	s.byok[in.Account] = string(pt)
+	s.byokMu.Unlock()
+	writeJSON(w, map[string]any{"ok": true, "account": in.Account})
+	log.Printf("[byok] provisioned account=%s (%d bytes, RAM only)", in.Account, len(pt))
+}
+
+func (s *server) unsealBYOK(blob []byte) ([]byte, error) {
+	key, err := enc.SharedKey(s.sealPriv, blob[:32], "fid-byok-v1")
+	if err != nil {
+		return nil, err
+	}
+	return enc.Open(key, blob[32:], []byte("fid-byok-v1"))
 }
 
 func envOr(k, d string) string {
