@@ -1,4 +1,4 @@
-# fid-router — 实现现状 · 架构 · Demo · 落地清单
+# fidrouter — 实现现状 · 架构 · Demo · 落地清单
 
 （截至 2026-07-31。配套设计见 docs/WHITEPAPER.md / VERIFICATION.md，可视化见 architecture 手册 artifact。）
 

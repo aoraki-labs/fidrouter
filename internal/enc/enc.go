@@ -1,4 +1,4 @@
-// Package enc holds the minimal, stdlib-only crypto used across fid-router.
+// Package enc holds the minimal, stdlib-only crypto used across fidrouter.
 // It is deliberately tiny: X25519 ECDH -> SHA-256 KDF -> AES-256-GCM.
 // This is a faithful (if minimal) stand-in for the HPKE/RA-TLS layer that a
 // production build would use; the shape of the API does not change when the

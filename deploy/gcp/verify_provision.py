@@ -40,7 +40,7 @@ def startup_script(ip):
         lines.append(f"base64 -d > {dst} <<'B64'\n{b64(src)}\nB64")
     lines += [
         "cat > /etc/systemd/system/vp.service <<'EOF'",
-        "[Unit]", "Description=fid-router public verification", "After=network-online.target",
+        "[Unit]", "Description=fidrouter public verification", "After=network-online.target",
         "[Service]",
         "Environment=PORT=8080",
         "WorkingDirectory=/opt/vp/verify-page",

@@ -1,4 +1,4 @@
-// Tiny local web server for testing a fid-router endpoint from a browser.
+// Tiny local web server for testing a fidrouter endpoint from a browser.
 // The browser talks to THIS server (same origin) which runs the TS verify SDK
 // and does the attestation + E2EE + receipt check in Node. (A pure-browser page
 // can't be a Claude artifact — artifact CSP forbids fetching your relay host.)
@@ -45,4 +45,4 @@ const server = http.createServer(async (req, res) => {
     res.end(String(e));
   }
 });
-server.listen(PORT, () => console.log(`[web] fid-router test UI on http://127.0.0.1:${PORT}`));
+server.listen(PORT, () => console.log(`[web] fidrouter test UI on http://127.0.0.1:${PORT}`));

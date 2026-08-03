@@ -1,4 +1,4 @@
-# fid-router verify SDK (Python + TS)
+# fidrouter verify SDK (Python + TS)
 
 The **client-side verifier** — Level 1 of the trust ladder (see `docs/VERIFICATION.md`).
 It refuses to send a prompt until it has cryptographically verified the enclave,

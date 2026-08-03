@@ -1,27 +1,21 @@
-# Confidential Space workload image for fid-router.
+# Confidential Space workload image for fidrouter — REPRODUCIBLE by design.
 # The image DIGEST is what Confidential Space attests (submods.container.image_digest),
-# so this image IS the measured no-log data plane. Build context must contain:
-#   fid-proxy  mock-upstream  entrypoint.sh  config/ (keys.json + pool.plain.json)
-# Binaries are static (CGO_ENABLED=0), so a slim base is fine.
-FROM debian:12-slim
+# so anyone must be able to rebuild THIS source and get the SAME digest. To that end:
+#   - base pinned by digest (no floating tag)
+#   - distroless static: no apt (deterministic), no shell, minimal surface, ships CA certs
+#   - the fid-proxy binary is built reproducibly (-trimpath -buildvcs=false -ldflags=-buildid=)
+#   - built with buildx + SOURCE_DATE_EPOCH so layer timestamps are normalized
+# NO private keys in the image: only public.json (cp_pub + expected measurement); the
+# identity seed and upstream key are injected/sealed at boot.
+FROM gcr.io/distroless/static-debian12@sha256:a9fcaedd4c9b59e12dd65d954f0b5044f19b0647a8a3712e77205df9e7b102cd
 WORKDIR /app
-# CA roots so the enclave can verify the upstream TLS cert (api.anthropic.com);
-# debian:12-slim ships without them.
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-COPY fid-proxy mock-upstream entrypoint.sh /app/
+COPY fid-proxy /app/fid-proxy
 COPY config /app/config
-RUN chmod +x /app/fid-proxy /app/mock-upstream /app/entrypoint.sh
 ENV FIDPROXY_ATTESTER=gcp-cs \
     FID_HOME=/app/config \
     FIDPROXY_POOL_PLAINTEXT=/app/config/pool.plain.json \
-    UPSTREAM_URL=http://127.0.0.1:9101/call \
     FIDPROXY_ADDR=:9090 \
-    FID_CS_AUDIENCE=fid-router
-# Confidential Space refuses operator env-var overrides unless the image allow-lists
-# them. This permits the BYOK upstream key to be injected via `tee-env-FID_ANTHROPIC_KEY`
-# metadata at launch — keeping it out of the image layers while the measured digest
-# stays independent of the key value.
+    FID_CS_AUDIENCE=fidrouter
 LABEL "tee.launch_policy.allow_env_override"="FID_ANTHROPIC_KEY,FID_IDENTITY_SEED"
 EXPOSE 9090
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["/app/fid-proxy"]

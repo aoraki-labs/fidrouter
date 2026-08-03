@@ -108,7 +108,7 @@ def append_log(receipt_b64: str, rec: dict) -> dict:
 
 PAGE = r"""<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>fid-router · 请求回执浏览器</title>
+<title>fidrouter · 请求回执浏览器</title>
 <style>
 :root{--bg:#f6f8fa;--panel:#fff;--ink:#0b1220;--muted:#5b6b7a;--line:#e3e8ee;--accent:#0d9488;
 --ok:#16a34a;--ok-bg:#e9f7ef;--bad:#dc2626;--bad-bg:#fdecec;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
@@ -135,7 +135,7 @@ table{width:100%;border-collapse:collapse;font-size:12.5px}th,td{text-align:left
 td.mono,th.mono{font-family:var(--mono)}.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
 .root{font-size:12px;color:var(--muted);margin:6px 0 0}.foot{margin-top:22px;font-size:12px;color:var(--muted)}
 </style></head><body><div class="wrap">
-<header><h1>fid-router · 请求回执浏览器</h1><span class="tag">透明日志 · 独立于中转运营方</span></header>
+<header><h1>fidrouter · 请求回执浏览器</h1><span class="tag">透明日志 · 独立于中转运营方</span></header>
 <p class="lead">每次请求,中转都签发一张<b>回执</b>(只含 hash+计数+模型+度量值,<b>无内容</b>)。把回执粘进来 → 现场验签名 + 核度量值,证明这条请求确实由那份<b>开源无日志代码</b>服务、<b>模型没被偷偷降级</b>。也可写入下方<b>不可篡改的追加日志</b>留痕。<a href="#" id="verlink">← 验端点(机器)在验证页</a></p>
 <h2>验证一张回执</h2>
 <textarea id="rin" placeholder="粘贴响应头 X-Fid-Receipt 的值(base64)…"></textarea>
@@ -243,5 +243,5 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8081"))
-    print(f"fid-router request explorer on http://0.0.0.0:{port}  (log: {LOG_PATH})")
+    print(f"fidrouter request explorer on http://0.0.0.0:{port}  (log: {LOG_PATH})")
     ThreadingHTTPServer(("0.0.0.0", port), H).serve_forever()

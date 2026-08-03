@@ -1,4 +1,4 @@
-// fid-router verify SDK (Node/TS, ESM) — drop-in client that refuses to send a
+// fidrouter verify SDK (Node/TS, ESM) — drop-in client that refuses to send a
 // prompt until it has cryptographically verified the enclave. No external deps
 // (uses node:crypto). Byte-compatible with the Go data plane:
 //   key    = SHA256( X25519(client_priv, enclave_pub) || "fid-e2e-v1" )

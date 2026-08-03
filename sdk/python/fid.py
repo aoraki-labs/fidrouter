@@ -1,4 +1,4 @@
-"""fid — drop-in verified client for fid-router.
+"""fid — drop-in verified client for fidrouter.
 
     from fid import OpenAI                       # <- the ONLY line that changes
     client = OpenAI(api_key="<token>", base_url="http://<enclave>:9090")
@@ -49,7 +49,7 @@ class _Usage:
 
 
 class _Fid:
-    """fid-router proof metadata attached to every response."""
+    """fidrouter proof metadata attached to every response."""
     def __init__(self, res):
         self.verified = True          # reached here => attestation + receipt passed (else it raised)
         self.measurement = res.receipt.get("measurement", "")
@@ -116,7 +116,7 @@ class OpenAI:
     auto-fetched from `verify_registry` unless you pin it explicitly."""
     def __init__(self, api_key: str, base_url: str,
                  verify_registry: str = "", pin_measurement: str = "",
-                 cs_audience: str = "fid-router", cp_adapter: str = "", pool: str = "shared"):
+                 cs_audience: str = "fidrouter", cp_adapter: str = "", pool: str = "shared"):
         # If cp_adapter is set, api_key is a New API token (sk-...) → exchange it
         # for a capability token. Otherwise api_key is already a capability token.
         token = _exchange(cp_adapter, api_key, pool) if cp_adapter else api_key

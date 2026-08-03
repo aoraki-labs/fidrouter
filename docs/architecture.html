@@ -1,4 +1,4 @@
-<title>fid-router 手册 · 可验证无日志中转</title>
+<title>fidrouter 手册 · 可验证无日志中转</title>
 <style>
   :root{
     --bg:#f5f7f9; --panel:#fff; --panel-2:#eef2f5; --ink:#0e1621; --muted:#5b6b7a;
@@ -85,7 +85,7 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">fid-router · 完整手册</div>
+    <div class="eyebrow">fidrouter · 完整手册</div>
     <h1>可验证的无日志 LLM 中转 — 一份手册讲清</h1>
     <p class="lead">把中转从"请相信我们"升级成"发送前你可以先验证我们"。本手册合并了：各方关系、架构与流程、TEE 名词、平台对比、信任模型、开源与商业模式。</p>
     <nav class="toc">
@@ -127,7 +127,7 @@
     <div class="partymap">
       <div class="party"><h3>终端用户</h3><div class="r">带来：prompt + 对隐私的疑虑。<br>关系：用 verify SDK <b>自己验证</b> enclave，不信中转的口头承诺。<br>付费：对 SDK <b>不付费</b>。</div></div>
       <div class="party"><h3>应用方 / BYOK 客户</h3><div class="r"><b>放弃自建中转、只有"用户渠道"的一方</b>：有用户+上游 key，但不想搭中转基建。带来：用户 + 密封的 key。关系：把 key 密封给我们、用我们当可验证中转。付费：<b>给我们</b>（服务费/订阅）。</div></div>
-      <div class="party us"><h3>fid-router（我们）</h3><div class="r"><b>身份 A</b>=可验证中转（管道，向客户收费）；<b>身份 B</b>=中立验证层/公证方（非管道，向合作中转收费）。运营 enclave + 注册表 + 透明日志 + 免费 SDK。</div></div>
+      <div class="party us"><h3>fidrouter（我们）</h3><div class="r"><b>身份 A</b>=可验证中转（管道，向客户收费）；<b>身份 B</b>=中立验证层/公证方（非管道，向合作中转收费）。运营 enclave + 注册表 + 透明日志 + 免费 SDK。</div></div>
       <div class="party"><h3>合作中转站</h3><div class="r">已有自己的用户与号池。关系：跑<b>我们的被度量镜像</b>、进我们的注册表，换"可验证"背书。付费：<b>给我们</b>（认证/分成）。</div></div>
       <div class="party"><h3>上游厂商</h3><div class="r">OpenAI/Anthropic/Gemini，做真正推理。关系：在<b>信任边界之外</b>——看到明文，受其自身 ZDR 条款约束，我们证明不了它。</div></div>
       <div class="party"><h3>云 + Intel（TEE 根）</h3><div class="r">阿里云/GCP 提供 TDX 机密 VM；<b>Intel</b> 是远程证明的信任根。关系：用户信的是 Intel 硬件 + 公开度量值，不是云厂商、也不是我们。</div></div>
@@ -207,7 +207,7 @@
           <div class="fstep"><div><b>拉可复现镜像</b> <span class="d">在它<b>自己的</b> TDX 里跑我们的被度量 fid-proxy。</span></div></div>
           <div class="fstep"><div><b>登记 + 发布度量值</b> <span class="d">注册 CP 公钥，度量值进我们的注册表。</span></div></div>
           <div class="fstep"><div><b>回执灌透明日志</b> <span class="d">供任何人事后核验。</span></div></div>
-          <div class="fstep"><div><b>拿"Verified by fid-router"徽章</b> <span class="d">它的用户用统一 SDK 验证它。</span></div></div>
+          <div class="fstep"><div><b>拿"Verified by fidrouter"徽章</b> <span class="d">它的用户用统一 SDK 验证它。</span></div></div>
           <div class="fstep"><div><b>按验证请求分成 / 认证费</b> <span class="d">SDK 对终端用户仍免费。</span></div></div>
         </div>
       </div>
@@ -244,7 +244,7 @@
   </section>
 
   <section id="ladder">
-    <h2><span class="n">09</span>终端用户怎么相信某中转真用了 fid-router</h2>
+    <h2><span class="n">09</span>终端用户怎么相信某中转真用了 fidrouter</h2>
     <p class="muted" style="margin:0 0 12px"><b>核心：</b>信任必须由用户一方执行或可被与中转无关的第三方核对；被验证方控制验证器=没验证（同 TLS）。</p>
     <div class="scroll"><table>
       <tr><th>级别</th><th>机制</th><th>信任来源</th></tr>
@@ -291,5 +291,5 @@
     <div class="card" style="margin-top:14px;font-size:13px"><b>壁垒不是 TEE 本身</b>（可 fork）。<span class="muted">是中立第三方可验证性=注册表+可复现构建+透明日志+被广泛信任的 verify SDK 构成的双边信任网络 + 合规 + 先发。<b>"只是管道"是要避免的低毛利陷阱。</b></span></div>
   </section>
 
-  <div class="footer">fid-router 手册 · 数据面 Go(enclave)+控制面 New API + 阿里云 g8i/TDX/DCAP/KMS · 本页为设计文档非产品承诺；对外话术以"仅覆盖中转这一跳"为准。配套 one-page intro 另见 intro 页。</div>
+  <div class="footer">fidrouter 手册 · 数据面 Go(enclave)+控制面 New API + 阿里云 g8i/TDX/DCAP/KMS · 本页为设计文档非产品承诺；对外话术以"仅覆盖中转这一跳"为准。配套 one-page intro 另见 intro 页。</div>
 </div>

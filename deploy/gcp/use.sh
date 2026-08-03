@@ -10,8 +10,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 export FID_HOME=config
-IP=${CS_IP:-34.158.56.83}
-DIGEST=${DIGEST:-sha256:dbccae5713b9b0a817af87281bde7fc57cb05ef557e684527b8567d4b6cf2be3}
+IP=${CS_IP:-34.21.247.73}
+DIGEST=${DIGEST:-sha256:ed7aadcd07e28decc13c8662b09530e7d128d94c91dc35211ce341ff8b883593}
 MODEL=${MODEL:-claude-haiku-4-5}
 PROMPT=${1:-"In one sentence, what is a typical refund policy?"}
 
@@ -23,7 +23,7 @@ import os, sys
 sys.path.insert(0, "sdk/python")
 from fidrouter_verify import FidClient, FidVerificationError
 c = FidClient(base_url=f"http://{os.environ['IP']}:9090", token=os.environ["CAP"],
-              pin_measurement=os.environ["DIGEST"], cs_audience="fid-router")
+              pin_measurement=os.environ["DIGEST"], cs_audience="fidrouter")
 try:
     r = c.chat(os.environ["MODEL"],
                [{"role": "system", "content": "You are a helpful assistant. Be concise."},

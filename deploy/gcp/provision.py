@@ -1,4 +1,4 @@
-"""Provision a GCP C3 **Intel TDX Confidential VM** for the fid-router data plane
+"""Provision a GCP C3 **Intel TDX Confidential VM** for the fidrouter data plane
 (auto VPC + firewall + instance). Mirrors deploy/aliyun/provision.py.
 
 SAFETY: dry-run by default (prints the plan, creates nothing). Creates real,

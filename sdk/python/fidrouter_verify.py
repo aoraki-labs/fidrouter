@@ -1,4 +1,4 @@
-"""fid-router verify SDK (Python) — the drop-in client that refuses to send a
+"""fidrouter verify SDK (Python) — the drop-in client that refuses to send a
 prompt until it has cryptographically verified the enclave.
 
 Byte-compatible with the Go data plane:
@@ -143,7 +143,7 @@ def _http_post(url: str, body: dict) -> tuple[int, bytes]:
 class FidClient:
     def __init__(self, base_url: str, token: str, pin_measurement: str = "", pin_idpub_hex: str = "",
                  pccs_url: str = "", dcap_backend=None, dcap_allow_unverified: bool = False,
-                 cs_audience: str = "fid-router"):
+                 cs_audience: str = "fidrouter"):
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.pin_measurement = pin_measurement  # TDX: MRTD; Confidential Space: container image_digest

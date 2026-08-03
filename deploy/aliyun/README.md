@@ -1,4 +1,4 @@
-# Aliyun provisioning for fid-router (P0)
+# Aliyun provisioning for fidrouter (P0)
 
 Stdlib-only (no SDK). Reads `ALIYUN_ACCESS_KEY_ID/SECRET` from the repo `.env`.
 

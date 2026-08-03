@@ -1,6 +1,6 @@
-// cp-adapter bridges an existing New API control plane to fid-router WITHOUT
+// cp-adapter bridges an existing New API control plane to fidrouter WITHOUT
 // forking New API. A client presents its New API token; the adapter validates
-// it against New API, then mints a fid-router capability JWT (signed by the CP
+// it against New API, then mints a fidrouter capability JWT (signed by the CP
 // key that fid-proxy pins) carrying the tenant, allowed models, pool and quota.
 //
 //	POST /exchange  {"api_token":"sk-...","pool":"shared"}  ->  {"token":"<capability JWT>"}
@@ -68,7 +68,7 @@ func main() {
 			http.Error(w, "invalid New API token", 401)
 			return
 		}
-		// 2) mint a fid-router capability JWT. tenant = short hash of the token
+		// 2) mint a fidrouter capability JWT. tenant = short hash of the token
 		//    (stable per user, doesn't leak the token).
 		h := sha256.Sum256([]byte(in.APIToken))
 		pool := in.Pool

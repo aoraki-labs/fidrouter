@@ -34,7 +34,7 @@ def check(ep: dict) -> dict:
            "build": REGISTRY["builds"].get(ep["expected_measurement"], {})}
     try:
         c = FidClient(base_url=ep["base_url"], token="", pin_measurement=ep["expected_measurement"],
-                      cs_audience=ep.get("cs_audience", "fid-router"))
+                      cs_audience=ep.get("cs_audience", "fidrouter"))
         c._attest_and_verify()
         out.update(ok=True, detail="现场校验通过 · 度量值 == 公开构建")
     except FidVerificationError as e:
@@ -77,11 +77,11 @@ def badge_svg(ok) -> bytes:
             f'<rect rx="3" width="{w}" height="20" fill="#24292f"/>'
             f'<rect rx="3" x="66" width="{w-66}" height="20" fill="{color}"/>'
             f'<g fill="#fff" font-family="Verdana,sans-serif" font-size="11" text-anchor="middle">'
-            f'<text x="33" y="14">fid-router</text><text x="{66+(w-66)//2}" y="14">{label}</text></g></svg>').encode()
+            f'<text x="33" y="14">fidrouter</text><text x="{66+(w-66)//2}" y="14">{label}</text></g></svg>').encode()
 
 
 PAGE = r"""<!doctype html><html lang="zh"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>fid-router · 验证</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>fidrouter · 验证</title>
 <style>
 :root{--bg:#f6f8fa;--panel:#fff;--ink:#0b1220;--muted:#5b6b7a;--line:#e3e8ee;--accent:#0d9488;
 --ok:#16a34a;--ok-bg:#e9f7ef;--bad:#dc2626;--bad-bg:#fdecec;--mono:ui-monospace,Menlo,Consolas,monospace;}
@@ -112,7 +112,7 @@ textarea{width:100%;height:90px;background:var(--panel);color:var(--ink);border:
 .how{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:26px;font-size:13.5px;color:var(--muted)}.how b{color:var(--ink)}
 a{color:var(--accent)}.foot{margin-top:20px;font-size:12px;color:var(--muted)}
 </style></head><body><div class="wrap">
-<h1 style="display:inline">fid-router · 验证</h1><span class="tag">中立信任锚 · 不属于任何中转运营方</span>
+<h1 style="display:inline">fidrouter · 验证</h1><span class="tag">中立信任锚 · 不属于任何中转运营方</span>
 <p class="lead">这里让你<b>自己核实</b>,不用信运营方的口头承诺,也不用写代码、不用账号。</p>
 
 <div class="tabs">
@@ -232,5 +232,5 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8080"))
-    print(f"fid-router trust page on http://0.0.0.0:{port}  ({len(REGISTRY['endpoints'])} endpoint(s))")
+    print(f"fidrouter trust page on http://0.0.0.0:{port}  ({len(REGISTRY['endpoints'])} endpoint(s))")
     ThreadingHTTPServer(("0.0.0.0", port), H).serve_forever()

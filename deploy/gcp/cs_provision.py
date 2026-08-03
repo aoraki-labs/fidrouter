@@ -25,7 +25,7 @@ import time
 import gcp
 
 HERE = os.path.dirname(__file__)
-REPO = "fid-router"
+REPO = "fidrouter"
 IMAGE = "fid-proxy"
 DOCKER = ["sudo", "-n", "docker"]  # docker daemon needs root in this env
 
@@ -51,17 +51,18 @@ def main():
         print("DRY-RUN. Re-run with --yes. NOTE: needs roles/artifactregistry.admin on the SA.")
         return
 
-    # 1) stage build context
+    # 1) stage build context — REPRODUCIBLE: reproducibly-built static binary +
+    # Dockerfile + PUBLIC config only. No mock-upstream, no entrypoint.sh (distroless
+    # has no shell; ENTRYPOINT runs fid-proxy directly), no keys.json.
     ctx = os.path.join(HERE, "cs", "_ctx")
     shutil.rmtree(ctx, ignore_errors=True)
     os.makedirs(ctx)
     root = os.path.join(HERE, "..", "..")
-    for f in ("dist/fid-proxy", "dist/mock-upstream"):
-        shutil.copy(os.path.join(root, f), ctx)
-    shutil.copy(os.path.join(HERE, "cs", "entrypoint.sh"), ctx)
+    go = os.environ.get("GO", "/home/ubuntu/.local/go/bin/go")
+    env = dict(os.environ, CGO_ENABLED="0", GOOS="linux", GOARCH="amd64")
+    sh(go, "build", "-trimpath", "-buildvcs=false", "-ldflags=-buildid=",
+       "-o", os.path.join(ctx, "fid-proxy"), "./cmd/fid-proxy", cwd=root, env=env)
     shutil.copy(os.path.join(HERE, "cs", "Dockerfile"), ctx)
-    # NEVER bake private keys into the image: keys.json (identity/CP/KMS seeds) is
-    # excluded; the image ships only public.json (cp_pub + expected measurement).
     shutil.copytree(os.path.join(root, "config"), os.path.join(ctx, "config"),
                     ignore=shutil.ignore_patterns("*.sealed.json", "keys.json"))
 
@@ -73,14 +74,24 @@ def main():
     except gcp.GcpError as e:
         print("AR repo:", "exists" if "ALREADY_EXISTS" in (e.body or "") else f"ERROR {e}")
 
-    # 3) docker login + build + push
+    # 3) docker login + REPRODUCIBLE buildx build+push (SOURCE_DATE_EPOCH + rewrite-timestamp
+    # → deterministic digest; scripts/reproduce.sh yields the same digest from source).
     tok = gcp.token()
     sh(*DOCKER, "login", "-u", "oauth2accesstoken", "-p", tok, ar_host)
-    sh(*DOCKER, "build", "-t", img, ctx)
-    sh(*DOCKER, "push", img)
-    out = subprocess.run([*DOCKER, "inspect", "--format={{index .RepoDigests 0}}", img],
-                         check=True, capture_output=True, text=True).stdout.strip()
-    digest = out.split("@")[-1]  # sha256:...
+    # push + rewrite-timestamp require the docker-container driver (default 'docker' driver can't)
+    subprocess.run([*DOCKER, "buildx", "create", "--name", "fidbuilder",
+                    "--driver", "docker-container", "--use"], capture_output=True, text=True)
+    subprocess.run([*DOCKER, "buildx", "use", "fidbuilder"], capture_output=True, text=True)
+    build = subprocess.run([*DOCKER, "buildx", "build", "--builder", "fidbuilder", "--no-cache",
+                            "--build-arg", "SOURCE_DATE_EPOCH=1700000000",
+                            "--output", f"type=image,name={img},push=true,rewrite-timestamp=true,oci-mediatypes=true",
+                            "--metadata-file", os.path.join(ctx, "meta.json"), ctx],
+                           capture_output=True, text=True)
+    if build.returncode != 0:
+        print("BUILDX FAILED:\n", build.stderr[-1500:])
+        raise SystemExit(1)
+    meta = json.load(open(os.path.join(ctx, "meta.json")))
+    digest = meta.get("containerimage.digest", "")  # sha256:...
     print("IMAGE_DIGEST =", digest)
 
     # 3b) BYOK upstream key: injected via CS `tee-env-*` metadata, NOT baked into

@@ -108,7 +108,7 @@ func main() {
 		}
 		at = t
 	case "gcp-cs": // GCP Confidential Space: measurement = container image_digest
-		c, err := tee.NewConfidentialSpace(idPriv, envOr("FID_CS_AUDIENCE", "fid-router"), os.Getenv("FID_CS_ENDPOINT"))
+		c, err := tee.NewConfidentialSpace(idPriv, envOr("FID_CS_AUDIENCE", "fidrouter"), os.Getenv("FID_CS_ENDPOINT"))
 		if err != nil {
 			log.Fatalf("[fid-proxy] Confidential Space attester init failed (must run inside CS): %v", err)
 		}
@@ -185,9 +185,9 @@ func (s *server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html><meta charset=utf-8><title>fid-router data plane</title>
+	fmt.Fprintf(w, `<!doctype html><meta charset=utf-8><title>fidrouter data plane</title>
 <body style="font-family:system-ui;max-width:640px;margin:60px auto;line-height:1.6;color:#0e1621">
-<h2>fid-router · verified no-log data plane</h2>
+<h2>fidrouter · verified no-log data plane</h2>
 <p>This is an <b>API endpoint</b>, not a web app. It runs inside a verified TEE
 (<code>%s</code>).</p>
 <p>measurement: <code style="font-size:12px">%s</code></p>
@@ -498,7 +498,7 @@ func (s *server) handleModels(w http.ResponseWriter, r *http.Request) {
 	}
 	data := make([]map[string]any, 0, len(claims.Models))
 	for _, m := range claims.Models {
-		data = append(data, map[string]any{"id": m, "object": "model", "owned_by": "fid-router"})
+		data = append(data, map[string]any{"id": m, "object": "model", "owned_by": "fidrouter"})
 	}
 	writeJSON(w, map[string]any{"object": "list", "data": data})
 }

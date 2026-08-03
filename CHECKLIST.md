@@ -1,4 +1,4 @@
-# fid-router 落地 Checklist（阿里云 g8i / TDX，Path B 自建，托管 key 先行）
+# fidrouter 落地 Checklist（阿里云 g8i / TDX，Path B 自建，托管 key 先行）
 
 图例：🧑 = 需要**你/你们团队**做（含开卡、申请 key）；🤖 = 我（Claude）可以写代码/脚本/配置；⏳ = 依赖开卡后才能做。
 

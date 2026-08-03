@@ -9,13 +9,13 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 : "${NEWAPI_TOKEN:?set NEWAPI_TOKEN to a New API user token (sk-...)}"
 NEWAPI_URL=${NEWAPI_URL:-https://207.57.187.193}
-CS_IP=${CS_IP:-34.158.56.83}
-DIGEST=${DIGEST:-sha256:dbccae5713b9b0a817af87281bde7fc57cb05ef557e684527b8567d4b6cf2be3}
+CS_IP=${CS_IP:-34.21.247.73}
+DIGEST=${DIGEST:-sha256:ed7aadcd07e28decc13c8662b09530e7d128d94c91dc35211ce341ff8b883593}
 # Real Claude via BYOK. Override MODEL=claude-haiku-4-5 for a ~cheap/fast pipe test.
 MODEL=${MODEL:-claude-opus-5}
 export FID_HOME=config
 
-echo "== 1) start cp-adapter (bridges New API -> fid-router capability token) =="
+echo "== 1) start cp-adapter (bridges New API -> fidrouter capability token) =="
 pkill -f 'dist/cp-adapter' 2>/dev/null || true; sleep 1
 NEWAPI_URL="$NEWAPI_URL" ./dist/cp-adapter >/tmp/cp-adapter.log 2>&1 &
 sleep 2
@@ -34,7 +34,7 @@ import os, sys
 sys.path.insert(0, "sdk/python")
 from fidrouter_verify import FidClient, FidVerificationError
 c = FidClient(base_url=f"http://{os.environ['CS_IP']}:9090", token=os.environ["CAP"],
-              pin_measurement=os.environ["DIGEST"], cs_audience="fid-router")
+              pin_measurement=os.environ["DIGEST"], cs_audience="fidrouter")
 try:
     for i, q in enumerate(["refund policy?", "shipping time?"], 1):
         r = c.chat(os.environ["MODEL"], [{"role":"system","content":"ACME support [stable ctx]"},

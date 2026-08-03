@@ -1,4 +1,4 @@
-# fid-router — verifiable, no-log LLM relay (data plane + verify SDK)
+# fidrouter — verifiable, no-log LLM relay (data plane + verify SDK)
 
 The open, auditable **data plane** for a *verifiable* no-log LLM relay, plus the
 client **verify SDK** and the **public verification** service.

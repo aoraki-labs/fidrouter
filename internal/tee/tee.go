@@ -1,6 +1,6 @@
 // Package tee is THE mockable underlying layer #1: remote attestation.
 //
-// Attester is the interface the rest of fid-router codes against. Today the
+// Attester is the interface the rest of fidrouter codes against. Today the
 // only implementation is Mock (below). In production you add an Aliyun-DCAP or
 // dstack implementation that returns a real Intel TDX quote (MRTD/RTMR) — and
 // NOTHING else in the codebase changes.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end local demo of the fid-router verifiable no-log relay (mocked TEE).
+# End-to-end local demo of the fidrouter verifiable no-log relay (mocked TEE).
 # Shows: attestation + fail-closed, E2EE prompt, affinity routing -> cache hits,
 # shared vs dedicated pools, signed receipts + downgrade detection, and NO-LOG.
 set -euo pipefail

@@ -1,4 +1,4 @@
-"""Provision the fid-router P0 environment on Aliyun (VPC + vSwitch + security
+"""Provision the fidrouter P0 environment on Aliyun (VPC + vSwitch + security
 group + key pair + one g8i instance for the TDX data plane).
 
 SAFETY: default is a DRY-RUN that only prints the plan. It creates real,

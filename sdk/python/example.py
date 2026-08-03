@@ -1,4 +1,4 @@
-"""Example: verify a fid-router endpoint and send two prompts with the SAME
+"""Example: verify a fidrouter endpoint and send two prompts with the SAME
 cacheable prefix (2nd should be a cache hit via affinity routing).
 
   PIN_MEASUREMENT=.. PIN_IDPUB=.. FID_TOKEN=.. python3 example.py
