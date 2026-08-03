@@ -9,8 +9,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 : "${NEWAPI_TOKEN:?set NEWAPI_TOKEN to a New API user token (sk-...)}"
 NEWAPI_URL=${NEWAPI_URL:-https://207.57.187.193}
-CS_IP=${CS_IP:-34.21.247.73}
-DIGEST=${DIGEST:-sha256:ed7aadcd07e28decc13c8662b09530e7d128d94c91dc35211ce341ff8b883593}
+CS_IP=${CS_IP:-34.158.56.83}
+DIGEST=${DIGEST:-sha256:332d19c5b78473fc3ffe364fb7670a775faa962ba0e49a975af7a6c6ba761966}
 # Real Claude via BYOK. Override MODEL=claude-haiku-4-5 for a ~cheap/fast pipe test.
 MODEL=${MODEL:-claude-opus-5}
 export FID_HOME=config

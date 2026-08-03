@@ -10,8 +10,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 export FID_HOME=config
-IP=${CS_IP:-34.21.247.73}
-DIGEST=${DIGEST:-sha256:ed7aadcd07e28decc13c8662b09530e7d128d94c91dc35211ce341ff8b883593}
+IP=${CS_IP:-34.158.56.83}
+DIGEST=${DIGEST:-sha256:332d19c5b78473fc3ffe364fb7670a775faa962ba0e49a975af7a6c6ba761966}
 MODEL=${MODEL:-claude-haiku-4-5}
 PROMPT=${1:-"In one sentence, what is a typical refund policy?"}
 

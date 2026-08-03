@@ -2,8 +2,8 @@
   "_comment": "PUBLIC verification registry \u2014 the neutral trust anchor. Maps each measured build to its open-source commit + reproducible-build recipe, and lists the endpoints that should be running it. The verification service live-checks each endpoint's attestation against this. This MUST be run independently of any relay operator (an operator who controls the verifier can fake it).",
   "source_url": "https://github.com/aoraki-labs/fidrouter",
   "builds": {
-    "sha256:ed7aadcd07e28decc13c8662b09530e7d128d94c91dc35211ce341ff8b883593": {
-      "name": "fidrouter data plane (distroless, reproducible binary)",
+    "sha256:332d19c5b78473fc3ffe364fb7670a775faa962ba0e49a975af7a6c6ba761966": {
+      "name": "fidrouter data plane (distroless, reproducible, sealed BYOK)",
       "source": "cmd/fid-proxy (Apache-2.0)",
       "reproducible_build": "bash scripts/reproduce.sh (binary bit-reproducible; verify live image content)",
       "identity_pub_hex": "810d683af691099d3ebd9313dd2605c97a73f5cb446e9e6cbb035a6555aaef57",
@@ -14,8 +14,8 @@
     {
       "name": "fidrouter \u00b7 internal BYOK (Anthropic)",
       "platform": "GCP Confidential Space \u00b7 Intel TDX",
-      "base_url": "http://34.21.247.73:9090",
-      "expected_measurement": "sha256:ed7aadcd07e28decc13c8662b09530e7d128d94c91dc35211ce341ff8b883593",
+      "base_url": "http://34.158.56.83:9090",
+      "expected_measurement": "sha256:332d19c5b78473fc3ffe364fb7670a775faa962ba0e49a975af7a6c6ba761966",
       "cs_audience": "fidrouter"
     }
   ]
