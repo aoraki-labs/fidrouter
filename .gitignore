@@ -1,0 +1,27 @@
+# --- SECRETS: never publish (comments on their own lines; git has no inline comments) ---
+.env
+.env.*
+# private Ed25519 seeds (identity, control-plane) + KMS master
+config/keys.json
+config/*.sealed.json
+# SSH keys / certs / SA keys
+deploy/gcp/fid-router-gcp
+deploy/gcp/fid-router-gcp.pub
+*.pem
+*-key.json
+
+# --- build scratch (contains binaries + a copy of config incl. keys.json) ---
+deploy/gcp/cs/_ctx/
+
+# --- machine-specific / ephemeral state ---
+deploy/gcp/cs_state.json
+deploy/gcp/verify_state.json
+deploy/gcp/state.json
+deploy/aliyun/state.*.json
+deploy/aliyun/tdx_ip.txt
+explorer/log.jsonl
+
+# --- build output ---
+dist/
+__pycache__/
+*.pyc

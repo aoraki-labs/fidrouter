@@ -1,0 +1,23 @@
+{
+  "_comment": "PUBLIC verification registry — the neutral trust anchor. Maps each measured build to its open-source commit + reproducible-build recipe, and lists the endpoints that should be running it. The verification service live-checks each endpoint's attestation against this. This MUST be run independently of any relay operator (an operator who controls the verifier can fake it).",
+  "source_url": "",
+  "builds": {
+    "sha256:dbccae5713b9b0a817af87281bde7fc57cb05ef557e684527b8567d4b6cf2be3": {
+      "name": "fid-proxy data plane (BYOK + OpenAI-compatible + signed receipts)",
+      "source": "fid-router/cmd/fid-proxy (Apache-2.0, open source)",
+      "reproducible_build": "deploy/gcp/cs/Dockerfile · CGO_ENABLED=0 go build ./cmd/fid-proxy",
+      "identity_pub_hex": "810d683af691099d3ebd9313dd2605c97a73f5cb446e9e6cbb035a6555aaef57",
+      "audit": "self-audited (PoC)",
+      "published_at": "2026-08-03"
+    }
+  },
+  "endpoints": [
+    {
+      "name": "fid-router · internal BYOK (Anthropic)",
+      "platform": "GCP Confidential Space · Intel TDX",
+      "base_url": "http://34.158.56.83:9090",
+      "expected_measurement": "sha256:dbccae5713b9b0a817af87281bde7fc57cb05ef557e684527b8567d4b6cf2be3",
+      "cs_audience": "fid-router"
+    }
+  ]
+}

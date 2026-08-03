@@ -1,0 +1,178 @@
+<title>TEE 名词与流程 · 深入浅出</title>
+<style>
+  :root{
+    --bg:#f6f8f9; --panel:#fff; --panel-2:#eef2f4; --ink:#0f1720; --muted:#586574;
+    --line:#d8dee4; --accent:#0d9488; --accent-ink:#0b7d73; --amber:#c2740a; --danger:#d23f45;
+    --analogy-bg:rgba(13,148,136,.08); --analogy-br:#0d9488;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; --maxw:960px;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#0b1016; --panel:#121a22; --panel-2:#0f1720; --ink:#e7eef4; --muted:#93a4b3;
+    --line:#22303c; --accent:#2dd4bf; --accent-ink:#5eead4; --amber:#eab308; --danger:#f2686d;
+    --analogy-bg:rgba(45,212,191,.10); --analogy-br:#2dd4bf;}}
+  :root[data-theme="light"]{--bg:#f6f8f9;--panel:#fff;--panel-2:#eef2f4;--ink:#0f1720;--muted:#586574;--line:#d8dee4;--accent:#0d9488;--accent-ink:#0b7d73;--amber:#c2740a;--danger:#d23f45;--analogy-bg:rgba(13,148,136,.08);--analogy-br:#0d9488;}
+  :root[data-theme="dark"]{--bg:#0b1016;--panel:#121a22;--panel-2:#0f1720;--ink:#e7eef4;--muted:#93a4b3;--line:#22303c;--accent:#2dd4bf;--accent-ink:#5eead4;--amber:#eab308;--danger:#f2686d;--analogy-bg:rgba(45,212,191,.10);--analogy-br:#2dd4bf;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:40px 22px 72px}
+  h1{font-size:29px;letter-spacing:-.02em;margin:0;text-wrap:balance}
+  h2{font-size:19px;margin:0 0 8px;display:flex;gap:10px;align-items:center}
+  h2 .n{font-family:var(--mono);font-size:12px;color:var(--accent-ink);border:1px solid var(--line);border-radius:6px;padding:2px 7px;background:var(--panel)}
+  h3{font-size:15px;margin:0}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink)}
+  .lead{color:var(--muted);font-size:16px;max-width:64ch;margin-top:10px}
+  header{border-bottom:1px solid var(--line);padding-bottom:24px;margin-bottom:32px}
+  section{margin-top:36px}
+  .analogy{background:var(--analogy-bg);border-left:3px solid var(--analogy-br);border-radius:0 10px 10px 0;padding:13px 16px;margin:14px 0}
+  .analogy b{color:var(--accent-ink)}
+  .tldr{display:grid;gap:8px;padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+  .tldr div{display:grid;grid-template-columns:24px 1fr;gap:10px;font-size:14.5px}
+  .tldr .m{color:var(--accent-ink);font-weight:700;text-align:center}
+  .term{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:14px 16px;margin-bottom:10px}
+  .term .h{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+  .term .zh{font-weight:640;font-size:15px}
+  .term .en{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .term .one{margin:6px 0 4px}
+  .term .us{font-size:13px;color:var(--muted)}
+  .term .us b{color:var(--accent-ink);font-weight:600}
+  .grouphd{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:22px 0 10px}
+  .flow{counter-reset:f;display:grid;gap:9px}
+  .fstep{display:grid;grid-template-columns:30px 1fr;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+  .fstep::before{counter-increment:f;content:counter(f);font-family:var(--mono);font-weight:640;color:var(--accent-ink);background:var(--panel-2);border:1px solid var(--line);border-radius:7px;width:30px;height:30px;display:grid;place-items:center}
+  .fstep b{font-weight:620}
+  .fstep .d{color:var(--muted);font-size:13.5px}
+  .def{display:inline-block;font-family:var(--mono);font-size:11px;color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 40%,var(--line));border-radius:20px;padding:1px 8px;margin-top:6px}
+  .k{font-family:var(--mono);font-size:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+  .mis{display:grid;gap:9px}
+  .mis .row{display:grid;grid-template-columns:22px 1fr;gap:10px;font-size:14px;border:1px solid var(--line);border-radius:9px;padding:11px 13px;background:var(--panel)}
+  .mis .x{color:var(--danger);font-weight:700;text-align:center}
+  .mis .row .fix{color:var(--muted);font-size:13px;display:block;margin-top:3px}
+  .footer{margin-top:44px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  code{font-family:var(--mono)}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">fid-router · 概念手册</div>
+    <h1>TEE 到底在做什么：名词 + 流程，深入浅出</h1>
+    <p class="lead">给不想啃规范的人。先给直觉，再逐个拆名词，最后把"验证一台中转不记录你数据"的完整流程走一遍。</p>
+  </header>
+
+  <section>
+    <h2><span class="n">00</span>一分钟直觉</h2>
+    <div class="analogy">
+      把 enclave 想成放在<b>一栋你不信任的大楼</b>里的一个<b>防拆玻璃箱</b>。CPU 保证：楼里任何人（房东=云厂商、保安=运维、拿到万能钥匙的人=root）都<b>看不进箱子、也改不了箱内的东西</b>。
+      更关键的是<b>远程证明</b>：在你把信投进箱子<b>之前</b>，箱子会先递给你一张<b>由 Intel 亲笔签名的"箱内物品公证照"</b>——照片显示箱里装的正是那份公开、可复现、"看完即焚不留底"的代码。你核对无误，才把信封好投进去；照片对不上，就<b>拒绝投递</b>。
+    </div>
+    <div class="tldr">
+      <div><span class="m">1</span><span><b>保密</b>：箱内数据连房东/root 都看不到（内存加密）。</span></div>
+      <div><span class="m">2</span><span><b>可证</b>：箱子能出示"我装的是哪份代码"的硬件签名证据（远程证明/度量值）。</span></div>
+      <div><span class="m">3</span><span><b>先验后发</b>：你先验证、密封给这个箱子，明文只在箱内出现一瞬——<b>但只覆盖中转这一跳，上游厂商仍看到明文</b>。</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">01</span>名词表</h2>
+
+    <div class="grouphd">▍硬件层 · 箱子本身</div>
+    <div class="term"><div class="h"><span class="zh">TEE 可信执行环境</span><span class="en">Trusted Execution Environment</span></div>
+      <div class="one">CPU 硬件划出的隔离区，里面的代码和数据即使对操作系统/虚拟化层/物理机 root 也保密、防篡改。</div>
+      <div class="us"><b>对我们：</b>就是那个"防拆玻璃箱"，让运营方在物理上也读不到 prompt。</div></div>
+    <div class="term"><div class="h"><span class="zh">Intel TDX</span><span class="en">Trust Domain Extensions</span></div>
+      <div class="one">Intel 的 TEE：把<b>一整台虚拟机</b>作为受保护单元（Trust Domain），内存由 CPU 加密、与 hypervisor 隔离。</div>
+      <div class="us"><b>对我们：</b>选它是因为可以<b>整机 lift-and-shift</b>——普通 Go 程序不改代码就跑进去。（对比 SGX 只保护进程内一小块，要改造代码。）</div></div>
+    <div class="term"><div class="h"><span class="zh">内存加密</span><span class="en">memory encryption</span></div>
+      <div class="one">RAM 被 CPU 用宿主拿不到的密钥加密。</div>
+      <div class="us"><b>对我们：</b>root 去 dump 内存、翻 swap，看到的都是密文。</div></div>
+    <div class="term"><div class="h"><span class="zh">度量值</span><span class="en">measurement · MRTD / RTMR</span></div>
+      <div class="one">对"箱里到底启动了哪份代码+配置"做的密码学哈希指纹。MRTD=启动时的固定度量，RTMR=运行期追加的度量。</div>
+      <div class="us"><b>对我们：</b>客户端 <b>pin</b> 住一个"已发布的无日志代码"的度量值；对不上就拒发。改一行代码→度量值就变。</div></div>
+    <div class="term"><div class="h"><span class="zh">TCB</span><span class="en">Trusted Computing Base</span></div>
+      <div class="one">被信任的硬件/固件/微码版本集合；证明里带 TCB 状态。</div>
+      <div class="us"><b>对我们：</b>可以拒绝"固件过期/有已知漏洞"的机器。</div></div>
+
+    <div class="grouphd">▍证明层 · 那张"公证照"</div>
+    <div class="term"><div class="h"><span class="zh">远程证明</span><span class="en">Remote Attestation</span></div>
+      <div class="one">enclave 产出一份<b>硬件签名</b>的证据，证明自己的度量值；远端可离线核验。</div>
+      <div class="us"><b>对我们：</b>整套信任的锚——用户"发送前"就能验"跑的是不是那份不记录的代码"。</div></div>
+    <div class="term"><div class="h"><span class="zh">Quote</span><span class="en">attestation quote</span></div>
+      <div class="one">那份签名证据本体，含度量值、<code>report_data</code>、签名链。</div>
+      <div class="us"><b>对我们：</b><code>GET /attestation</code> 返回的就是它。</div></div>
+    <div class="term"><div class="h"><span class="zh">report_data</span><span class="en">report data (64B)</span></div>
+      <div class="one">调用方可自定义、被"烤进"quote 的 64 字节。</div>
+      <div class="us"><b>对我们：</b>放 <code>H(nonce ‖ 临时公钥)</code>——一举绑定<b>新鲜性</b>（防重放）和<b>信道密钥</b>。</div></div>
+    <div class="term"><div class="h"><span class="zh">DCAP / PCCS / Intel PCS</span><span class="en">Data Center Attestation Primitives</span></div>
+      <div class="one">离线验证 quote 的工具链：quote 的签名链到 <b>Intel 根证书</b>（PCK 证书由 Intel PCS 签发；PCCS 是缓存这些证书的区域服务）。</div>
+      <div class="us"><b>对我们：</b>阿里云/GCP 给的是<b>裸 Intel-rooted quote</b>，客户端用 DCAP 验到 Intel——信任根是硬件厂商，不是云。</div></div>
+    <div class="term"><div class="h"><span class="zh">MAA / Nitro / SEV-SNP（对比项）</span><span class="en">other roots</span></div>
+      <div class="one">Azure MAA=微软签的证明；AWS Nitro=AWS 签、enclave 模型；AMD SEV-SNP=AMD 的整机 TEE。</div>
+      <div class="us"><b>对我们：</b>信任根落在云/别家厂商，叙事弱于裸 Intel DCAP。</div></div>
+
+    <div class="grouphd">▍通信与密钥层 · 怎么把信安全投进箱子</div>
+    <div class="term"><div class="h"><span class="zh">RA-TLS</span><span class="en">Remote-Attestation TLS</span></div>
+      <div class="one">把 quote 塞进 TLS 服务器证书扩展——验证 TLS 证书 == 验证 enclave。</div>
+      <div class="us"><b>对我们：</b>把"安全信道"和"被证明的代码"绑成一件事。</div></div>
+    <div class="term"><div class="h"><span class="zh">HPKE</span><span class="en">Hybrid Public Key Encryption · RFC 9180</span></div>
+      <div class="one">用对方公钥把数据"密封"，只有持私钥方能开。</div>
+      <div class="us"><b>对我们：</b>客户端把 prompt 密封给 enclave 的<b>被证明过的公钥</b>——只有箱内能解。</div></div>
+    <div class="term"><div class="h"><span class="zh">密封 / 安全密钥释放</span><span class="en">sealing · Secure Key Release (SKR)</span></div>
+      <div class="one">一个密钥只在"度量值符合策略"的 enclave 里才被 KMS 解封/释放。</div>
+      <div class="us"><b>对我们：</b>上游 key 只对"被证明的无日志代码"释放明文——这就是 <b>BYOK 里你敢把 key 给我们、而我们看不到</b>的原理。</div></div>
+    <div class="term"><div class="h"><span class="zh">KMS / KBS</span><span class="en">Key Management / Broker Service</span></div>
+      <div class="one">执行 SKR 的服务；master 常驻 HSM。</div>
+      <div class="us"><b>对我们：</b>阿里云需自建一个小 KBS（验 quote→放 key），已被 <code>kms.KeyProvider</code> 接口隔离。</div></div>
+
+    <div class="grouphd">▍信任基础设施层 · 让别人也能核对</div>
+    <div class="term"><div class="h"><span class="zh">可复现构建</span><span class="en">reproducible build</span></div>
+      <div class="one">同一份源码→逐位相同的二进制→相同度量值。</div>
+      <div class="us"><b>对我们：</b>第三方能重建并确认"这个度量值 == 这份开源不记录代码"。<b>没有它，开源也白开。</b></div></div>
+    <div class="term"><div class="h"><span class="zh">透明日志</span><span class="en">transparency log · Rekor/Trillian</span></div>
+      <div class="one">公开的 append-only 日志（Merkle 树），可证 inclusion。</div>
+      <div class="us"><b>对我们：</b>签名回执入日志→事后可查、丢弃/篡改会被发现。</div></div>
+    <div class="term"><div class="h"><span class="zh">fail-closed</span><span class="en">fail-closed</span></div>
+      <div class="one">验证不过就拒绝，而不是"出错就放行"。</div>
+      <div class="us"><b>对我们：</b>度量值/签名/nonce 任一不符，客户端<b>绝不发送</b>。</div></div>
+    <div class="term"><div class="h"><span class="zh">侧信道 / 缓存计时</span><span class="en">side channel · cache-timing</span></div>
+      <div class="one">通过共享资源（如缓存耗时）间接泄露信息。</div>
+      <div class="us"><b>对我们：</b>共享号池的跨租户缓存命中是已知侧信道，<code>-isolated</code> 把租户折进路由指纹以关闭它。</div></div>
+  </section>
+
+  <section>
+    <h2><span class="n">02</span>流程一：远程证明握手（发 prompt 前）</h2>
+    <div class="flow">
+      <div class="fstep"><div><b>客户端要证明</b> <span class="d"><span class="k">GET /attestation?nonce=&lt;随机&gt;</span></span><div class="def">防住：重放攻击</div></div></div>
+      <div class="fstep"><div><b>enclave 生成一次性密钥 + 出 quote</b> <span class="d">quote 里 <code>measurement</code> + <code>report_data=H(nonce‖临时公钥)</code>，由硬件签名。</span></div></div>
+      <div class="fstep"><div><b>客户端三验</b> <span class="d">① 签名链到 <b>Intel 根</b>（DCAP/PCCS）；② <code>measurement==注册表已发布值</code>；③ <code>report_data</code> 对得上 nonce+公钥。</span><div class="def">防住：假冒中转 / 换了带日志的代码 / 重放</div></div></div>
+      <div class="fstep"><div><b>任一不符 → fail-closed</b> <span class="d">直接拒发，明文一个字都不出用户设备。</span></div></div>
+      <div class="fstep"><div><b>密封发送</b> <span class="d">HPKE 把 prompt 封给被证明的公钥 + 能力令牌一起发。<b>只有箱内能解。</b></span></div></div>
+      <div class="fstep"><div><b>enclave 内处理</b> <span class="d">RAM 内解密→亲和路由→SKR 取上游 key→转发→回封响应 + 签名回执。</span></div></div>
+      <div class="fstep"><div><b>客户端验回执</b> <span class="d">验签名 + <code>measurement</code> + <code>model==请求</code>（防降级）；可选查透明日志 inclusion。</span><div class="def">防住：偷偷降级模型 / 伪造转发记录</div></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">03</span>流程二：BYOK 密钥密封（你敢给 key、我们却看不到）</h2>
+    <div class="flow">
+      <div class="fstep"><div><b>客户先验 attestation</b> <span class="d">确认对面是"被证明的无日志代码"，再托付。</span></div></div>
+      <div class="fstep"><div><b>把自己的上游 key 密封</b> <span class="d">用 KMS/enclave 公钥加密，绑定策略"只对度量值 X 释放"。</span></div></div>
+      <div class="fstep"><div><b>上传密文到控制面</b> <span class="d">New API 只存<b>密文</b>；运维/DBA/宿主机看到的都是密文。</span></div></div>
+      <div class="fstep"><div><b>请求时 KMS 门控释放</b> <span class="d">KMS 验实时 quote+度量值达标→把 key 解给这个 enclave，仅存 RAM。</span></div></div>
+      <div class="fstep"><div><b>结果</b> <span class="d">你（公司/运维）<b>永远看不到明文 key，也看不到 prompt</b>。这就是"密钥方与运营方分离 / operator-blind"。</span></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">04</span>常见误解</h2>
+    <div class="mis">
+      <div class="row"><div class="x">✕</div><div>"用了 TEE，OpenAI 就看不到我的数据了。"<span class="fix">→ 不对。只保护<b>中转这一跳</b>；prompt 仍以明文交付你选的上游，受其自身条款约束。</span></div></div>
+      <div class="row"><div class="x">✕</div><div>"中转说它用了 TEE，所以安全。"<span class="fix">→ 不对。必须<b>你自己（或你的软件）去验证</b> attestation，最好客户端侧、开源 SDK。被验证方自己控制验证器=没验证。</span></div></div>
+      <div class="row"><div class="x">✕</div><div>"这靠区块链/零知识证明实现。"<span class="fix">→ 不对。这是 <b>TEE + 远程证明</b>。ZK 管"算得对不对"（完整性），不管"数据不被留存"（隐私），且当前跑不动大模型。</span></div></div>
+      <div class="row"><div class="x">✕</div><div>"这是端到端加密。"<span class="fix">→ 只在<b>客户端↔enclave</b> 之间端到端；enclave 之后到上游是普通 TLS，上游看到明文。</span></div></div>
+    </div>
+  </section>
+
+  <div class="footer">
+    配套：架构总览与信任梯子见 architecture 页；完整定义见 docs/WHITEPAPER.md、docs/VERIFICATION.md。本页为科普向说明，非产品承诺。
+  </div>
+</div>

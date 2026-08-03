@@ -1,0 +1,12 @@
+{
+  "_comment": "BYOK real-upstream mode. 'shared' holds one real Anthropic account: key is 'env:FID_ANTHROPIC_KEY' (resolved from the environment at boot), so only a placeholder is baked into the measured image — the real key is injected at VM launch via Confidential Space `tee-env-FID_ANTHROPIC_KEY` metadata and never enters git or the image registry. 'cust-vip' stays mock for local testing.",
+  "pools": {
+    "shared": [
+      { "id": "byok-anthropic", "provider": "anthropic", "base_url": "https://api.anthropic.com", "key": "env:FID_ANTHROPIC_KEY", "tpm_budget": 0 }
+    ],
+    "cust-vip": [
+      { "id": "vip-1", "provider": "openai", "key": "sk-VIP-1-plainmock", "tpm_budget": 1000 },
+      { "id": "vip-2", "provider": "openai", "key": "sk-VIP-2-plainmock", "tpm_budget": 1000 }
+    ]
+  }
+}

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>fid-router 验证测试台</title>
+<style>
+  :root{
+    --bg:#f5f7f9;--panel:#fff;--panel-2:#eef2f5;--ink:#0e1621;--muted:#5b6b7a;--line:#d7dee5;
+    --accent:#0d9488;--accent-ink:#0b7d73;--ok:#0d9488;--danger:#d23f45;--warn:#c2740a;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root{--bg:#0b1016;--panel:#121a22;--panel-2:#0f1720;--ink:#e7eef4;--muted:#93a4b3;--line:#22303c;--accent:#2dd4bf;--accent-ink:#5eead4;--ok:#2dd4bf;--danger:#f2686d;--warn:#eab308;}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;font-size:14px}
+  .wrap{max-width:860px;margin:0 auto;padding:32px 20px 60px}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--muted);margin:0 0 22px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  label{display:block;font-size:12px;color:var(--muted);margin:0 0 4px;font-family:var(--mono)}
+  input,textarea{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--ink);
+    padding:8px 10px;font-family:var(--mono);font-size:12.5px}
+  textarea{resize:vertical;min-height:56px}
+  .full{grid-column:1/3}
+  button{margin-top:14px;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px 18px;
+    font-size:14px;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.6;cursor:default}
+  .panel{margin-top:20px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:0;overflow:hidden;display:none}
+  .panel.show{display:block}
+  .banner{padding:14px 18px;font-weight:640;display:flex;align-items:center;gap:10px}
+  .banner.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--accent-ink)}
+  .banner.bad{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger)}
+  .body{padding:14px 18px}
+  .kv{display:grid;grid-template-columns:150px 1fr;gap:6px 12px;font-size:13px}
+  .kv div:nth-child(odd){color:var(--muted);font-family:var(--mono);font-size:12px}
+  .chip{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid var(--line)}
+  .chip.hit{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}
+  .chip.miss{color:var(--muted)}
+  pre{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto;font-size:11.5px;margin:12px 0 0}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:4px}
+  .step{font-size:12px;color:var(--muted);margin:2px 0}
+  .step b{color:var(--accent-ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>fid-router 验证测试台</h1>
+  <p class="sub">在发送前先做远程证明校验（fail-closed），再密封发送并校验签名回执。验证在本地 Node 服务里用 verify SDK 完成。</p>
+
+  <div class="grid">
+    <div><label>中转 endpoint (base_url)</label><input id="baseUrl" value="http://127.0.0.1:9090" /></div>
+    <div><label>能力令牌 token</label><input id="token" placeholder="ctl mint 得到的 JWT" /></div>
+    <div><label>pin 度量值 (measurement, hex)</label><input id="pinMeasurement" placeholder="来自 config/pins.sh" /></div>
+    <div><label>pin 身份公钥 (idpub, hex)</label><input id="pinIdpub" placeholder="来自 config/pins.sh" /></div>
+    <div><label>model</label><input id="model" value="gpt-4o" /></div>
+    <div><label>可缓存前缀 prefix</label><input id="prefix" value="You are ACME's support bot. [stable context]" /></div>
+    <div class="full"><label>本次问题 suffix</label><textarea id="suffix">你们的退货政策是什么？</textarea></div>
+  </div>
+  <button id="go">验证并发送</button>
+  <div class="hint">同一 prefix 连发两次可看到第二次 CACHE_HIT=true（亲和路由）。把 endpoint 指向带日志的构建会看到 fail-closed。</div>
+
+  <div id="panel" class="panel">
+    <div id="banner" class="banner"></div>
+    <div class="body">
+      <div class="step">① 远程证明校验 → ② HPKE 密封 → ③ 发送 → ④ 校验签名回执（含 model 防降级）</div>
+      <div id="kv" class="kv"></div>
+      <pre id="receipt"></pre>
+    </div>
+  </div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+$("go").onclick = async () => {
+  const btn = $("go"); btn.disabled = true; btn.textContent = "验证中…";
+  const payload = ["baseUrl","token","pinMeasurement","pinIdpub","model","prefix","suffix"]
+    .reduce((o,k)=>(o[k]=$(k).value,o),{});
+  const panel = $("panel"), banner = $("banner"), kv = $("kv"), rc = $("receipt");
+  panel.classList.add("show"); kv.innerHTML=""; rc.textContent="";
+  try {
+    const res = await fetch("/api/infer", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
+    const j = await res.json();
+    if (j.ok) {
+      const r = j.result;
+      banner.className = "banner ok"; banner.textContent = "✔ 已验证：远程证明通过，回执签名有效，模型未被降级";
+      const hit = r.cacheHit ? '<span class="chip hit">CACHE HIT</span>' : '<span class="chip miss">cache miss</span>';
+      kv.innerHTML = [
+        ["上游账号 account", r.account],["亲和 affinity", String(r.affinity)],
+        ["缓存 cache", hit],["模型 model", r.model],
+        ["prompt/completion tokens", r.promptTokens+" / "+r.completionTokens],
+        ["响应 completion", r.completion],
+      ].map(([k,v])=>`<div>${k}</div><div>${v}</div>`).join("");
+      rc.textContent = "signed receipt:\n" + JSON.stringify(r.receipt, null, 2);
+    } else {
+      banner.className = "banner bad";
+      banner.textContent = (j.failClosed ? "✘ FAIL-CLOSED（已拒发，未发送任何内容）：" : "✘ 错误：") + j.error;
+    }
+  } catch (e) {
+    banner.className = "banner bad"; banner.textContent = "✘ 请求失败：" + e;
+  } finally { btn.disabled = false; btn.textContent = "验证并发送"; }
+};
+</script>
+</body>
+</html>
