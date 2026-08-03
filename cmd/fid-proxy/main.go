@@ -22,6 +22,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -300,9 +301,31 @@ func (s *server) handleInfer(w http.ResponseWriter, r *http.Request) {
 		claims.Tenant, claims.Pool, p.Model, acct.ID, affinity, ur.CacheHit, ur.PromptTokens, ur.CompletionTokens)
 }
 
+// allowedUpstreamHosts is part of the MEASURED code: the enclave will only ever
+// forward to these real first-party provider endpoints, never to an arbitrary
+// (possibly logging) middleman. Because this list is in the open-source, measured
+// binary, "the upstream is really Anthropic/OpenAI, not another relay" is provable
+// from the measurement + TLS, not merely promised. Adding a provider is a reviewed
+// code change → new measurement → re-audit.
+var allowedUpstreamHosts = map[string]bool{
+	"api.anthropic.com": true,
+	"api.openai.com":    true,
+}
+
 // forward dispatches by provider: Anthropic Messages API, OpenAI-compatible
 // /v1/chat/completions (BYOK / managed real key), else the mock upstream.
 func (s *server) forward(baseURL, apiKey, provider string, r upstreamReq) (wire.UpstreamResp, error) {
+	if baseURL != "" {
+		u, err := url.Parse(baseURL)
+		if err != nil || !allowedUpstreamHosts[u.Host] {
+			return wire.UpstreamResp{}, fmt.Errorf("upstream host %q not in measured allow-list (real providers only)", func() string {
+				if u != nil {
+					return u.Host
+				}
+				return baseURL
+			}())
+		}
+	}
 	if provider == "anthropic" {
 		return s.forwardAnthropic(baseURL, apiKey, r)
 	}
