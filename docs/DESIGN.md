@@ -107,15 +107,30 @@ New API 干:发用户令牌、计费、看板、渠道(BYOK)、后台。**用户
 
 ---
 
-## 4. 一次请求全流程(四方)
+## 4. 一次请求全流程 —— 用户只面对 New API,换令牌是 SDK 后台做的
+
+**关键澄清(常见误解):终端用户永远只跟"合作方的 New API"打交道**,拿一个 `sk-`、设一个 base_url,就像用任何中转一样。**不存在"用户登录 fidrouter 第二个站点换令牌"这回事** —— `sk-`→能力令牌的兑换、度量值校验、E2EE 全部在 **SDK / 网关后台自动完成**。cp-adapter 是**绑在 New API 旁边**的后台服务(或直接 fork 进 New API),用户看不见它。
 
 ```
-事先:合作方 ① BYOK 封上游 key 进 enclave  ② 给用户发令牌  ③ 配计量回调
-每次:
- 用户/SDK ─验度量值(对中立注册表,fail-closed)→ E2EE 封 prompt + 带能力令牌 ─▶ enclave
- enclave ─离线验令牌→ RAM 解密 → 解封上游 key → TLS 直连上游官方 → 答案
- enclave ─E2EE 封回用户 + 签名回执─▶ (用户验回执/防降级) & (旁路回执→合作方+我们各一份计量)
+事先(合作方一次性):① BYOK 把上游 key 封进 enclave(operator-blind)
+                     ② 在中立注册表登记 enclave 度量值  ③ 配计量回调
+每次请求(用户侧,全自动):
+ 用户 App ─ from fid import OpenAI(sk-=New API 令牌, base_url=中继)
+   └ SDK 后台:①把 sk- 交给 cp-adapter(绑 New API)验号池+额度 → 换回能力令牌
+              ②对中立注册表验 enclave 度量值(fail-closed)
+              ③E2EE 封 prompt + 带能力令牌 ──▶ enclave(直连,New API 不在数据路径)
+ enclave ─ 离线验令牌 → RAM 解密 → 解封上游 key → TLS 直连上游官方 → 答案
+ enclave ─ E2EE 封回 + 签名回执 ──▶ 用户(验回执/防降级)
+ enclave ─ 签名回执(仅元数据)──▶ 平台账本 → reconciler → 回写 New API 扣额度
 ```
+
+**谁面对哪个界面(别混):**
+| 角色 | 只需要用 | 不需要碰 |
+|---|---|---|
+| 终端用户/开发者 | 合作方的 **New API**(拿 sk-)+ **fid SDK** | fidrouter 任何站点 |
+| 合作方/中转运营方 | **平台控制台**(注册/看板/计费)+ 把 cp-adapter 绑到自己 New API | enclave 内部 |
+| 我们(平台方) | 中立**注册表 + 验证页** + 自营 New API 的 enclave/计费 | 用户明文(结构上看不到) |
+| 想审计的任何人 | 中立**验证页/SDK**(现场验 enclave) | 无需账号 |
 
 ---
 
