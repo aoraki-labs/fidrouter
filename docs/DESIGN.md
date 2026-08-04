@@ -70,7 +70,7 @@
 
 ### 2.7 计量与回执(签名元数据,旁路回传,永不回传内容)✅
 - 每次请求 enclave 出**签名回执**:`{tenant/用户id, model, prompt+completion tokens, cache_hit, ts, measurement}`,**无 prompt/回复内容**,Ed25519 签。
-- **已实现旁路 push**:`FIDPROXY_METERING_URL` 一设,enclave 每出一张回执就异步 POST 到该地址(`console/server.py` 的 `/ingest`)。也可组合 pull API / 客户端回传 / 批量对账。
+- **已实现旁路 push**:`FIDPROXY_METERING_URL` 一设,enclave 每出一张回执就异步 POST 到该地址(平台前端的 `/ingest`)。也可组合 pull API / 客户端回传 / 批量对账。
 - **回执可验签** → 合作方(及我们)能确认计量真来自被度量 enclave,**连我们都改不了这个数**。`/ingest` 收到后先按注册表用该度量值对应的 enclave 公钥**验签**,验不过(伪造/未知度量值)直接拒 → 用量不可伪造。既计费又对账(防抵赖)。
 
 ### 2.8 可复现构建(内容级)+ 注册表
@@ -101,10 +101,9 @@ New API 干:发用户令牌、计费、看板、渠道(BYOK)、后台。**用户
 - 作为产品①的第一个 BYOK 客户跑通样板。
 - **额外职责:我们侧计费** —— 我们也留一份 enclave 计量,按**每个合作方**聚合,给合作方开账(平台费/用量,或对其"可验证档"溢价分成)。
 
-### 3.4 合作方控制台(`console/`)= 计量 ingest 的参考实现 ✅
-- **一个可直接跑的最小控制面**:`/ingest` 收 enclave 签名回执 → 验签 → 按用户聚合;`/api/usage` 出 JSON;首页两个 tab:**用量看板** + **产品文档**(直接渲染本 DESIGN.md,做到"文档就在产品里")。
-- 合作方要接自己的 New API:把计量回调指到自己的 `/ingest` 等价端点即可,**不必用我们这套**;这份是样板 + 我们自己产品②的控制台。
-- 本地验证:`scripts/test-metering.sh`(mock enclave → 签名回执 → console,含"伪造回执被拒"用例)。
+### 3.4 平台产品前端(闭源,`fidrouter-platform`)= 计量 ingest + 控制台 ✅
+- 产品前端(私有仓库 `fidrouter-platform`)统一承载:`/api/verify`(现场验证)、`/ingest`+`/api/usage`(验签计量账本)、`/api/exchange`(经 cp-adapter 换令牌)、文档。取代了早期的开源参考 console(已按"产品化闭源"移除)。
+- 合作方要接自己的 New API:把计量回调指到自己的 `/ingest` 等价端点即可,**不必用我们这套**。
 
 ---
 
