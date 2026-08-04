@@ -54,9 +54,11 @@ type server struct {
 	at       tee.Attester
 	km       kms.KeyProvider
 	rt       *routing.Router
-	cpPub    ed25519.PublicKey
-	upstream string
-	http     *http.Client
+	cpPub       ed25519.PublicKey
+	upstream    string
+	http        *http.Client
+	meteringURL string // if set, each signed receipt (metadata, NO content) is POSTed here
+	verifyURL   string // shown on the root page so a human can go verify
 
 	// sealed BYOK (operator-blind): a per-boot X25519 keypair generated INSIDE
 	// the enclave (RAM only, never persisted, operator never sees the private
@@ -190,9 +192,11 @@ func main() {
 		cpPub:    ed25519.PublicKey(cpPubBytes),
 		upstream: envOr("UPSTREAM_URL", "http://127.0.0.1:9101/call"),
 		http:     &http.Client{Timeout: 120 * time.Second}, // real Claude turns can run tens of seconds
-		sealPriv: sealPriv,
-		sealPub:  sealPriv.PublicKey().Bytes(),
-		byok:     map[string]string{},
+		sealPriv:    sealPriv,
+		sealPub:     sealPriv.PublicKey().Bytes(),
+		byok:        map[string]string{},
+		meteringURL: os.Getenv("FIDPROXY_METERING_URL"),
+		verifyURL:   os.Getenv("FIDPROXY_VERIFY_URL"),
 	}
 
 	http.HandleFunc("/", s.handleRoot)
@@ -215,19 +219,37 @@ func (s *server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	verifyLink := ""
+	if s.verifyURL != "" {
+		verifyLink = fmt.Sprintf(`<p><a href="%s" style="color:#0d9488;font-weight:600">→ Verify this endpoint independently</a>
+(checks the measurement below against the published open-source build, and fail-closes on mismatch).</p>`, s.verifyURL)
+	}
+	// This root page exists so a human who lands on the raw endpoint understands
+	// what it is and where to go to VERIFY it — the machine-facing work happens at
+	// /attestation. Humans should use the verify page (verifyLink); apps should use
+	// the SDK. It is intentionally minimal: the enclave's job is to serve the API and
+	// prove itself, not to host a UI.
 	fmt.Fprintf(w, `<!doctype html><meta charset=utf-8><title>fidrouter data plane</title>
-<body style="font-family:system-ui;max-width:640px;margin:60px auto;line-height:1.6;color:#0e1621">
+<body style="font-family:system-ui;max-width:660px;margin:56px auto;line-height:1.6;color:#0e1621;padding:0 18px">
 <h2>fidrouter · verified no-log data plane</h2>
-<p>This is an <b>API endpoint</b>, not a web app. It runs inside a verified TEE
-(<code>%s</code>).</p>
+<p>This is the <b>API endpoint</b> that actually relays your prompts — the only
+component that ever sees plaintext, and only in RAM. It runs inside a verified TEE
+(<code>%s</code>) and is <b>operator-blind</b>: even we can't read your traffic or
+extract your upstream key.</p>
 <p>measurement: <code style="font-size:12px">%s</code></p>
-<ul>
-<li><code>GET /attestation?nonce=…</code> — remote-attestation quote</li>
-<li><code>POST /v1/infer</code> — sealed inference (use the verify SDK)</li>
+%s
+<p style="color:#5b6b7a;font-size:14px">Endpoints:</p>
+<ul style="font-size:14px">
+<li><code>GET  /attestation?nonce=…</code> — remote-attestation quote (bind a channel key)</li>
+<li><code>GET  /sealing</code> — signed sealing pubkey (seal your upstream key to this enclave)</li>
+<li><code>POST /byok</code> — submit a runtime-sealed upstream key (operator-blind BYOK)</li>
+<li><code>POST /v1/infer</code> — sealed inference (native, E2EE)</li>
+<li><code>POST /v1/chat/completions</code> — OpenAI-compatible; returns an <code>X-Fid-Receipt</code></li>
+<li><code>GET  /v1/models</code></li>
 </ul>
-<p style="color:#5b6b7a">Verify before you trust: the client SDK checks this
+<p style="color:#5b6b7a;font-size:13px">Don't trust — verify. The SDK checks this
 measurement against the published build and fail-closes on mismatch.</p>
-</body>`, s.at.Platform(), s.at.Measurement())
+</body>`, s.at.Platform(), s.at.Measurement(), verifyLink)
 }
 
 func (s *server) handleAttest(w http.ResponseWriter, r *http.Request) {
@@ -318,6 +340,7 @@ func (s *server) handleInfer(w http.ResponseWriter, r *http.Request) {
 		CacheHit: ur.CacheHit, Measurement: s.at.Measurement(),
 	}
 	signed, _ := receipt.Sign(rec, s.at.Sign)
+	s.emitMetering(signed)
 
 	// 8) seal response back to the client (E2EE both ways).
 	sealedResp, _ := enc.Seal(key, respBody, []byte(in.Session))
@@ -594,6 +617,7 @@ func (s *server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		CacheHit: ur.CacheHit, Measurement: s.at.Measurement(),
 	}
 	if signed, e := receipt.Sign(rec, s.at.Sign); e == nil {
+		s.emitMetering(signed)
 		if sb, e2 := json.Marshal(signed); e2 == nil {
 			w.Header().Set("X-Fid-Receipt", base64.StdEncoding.EncodeToString(sb))
 		}
@@ -724,6 +748,32 @@ func (s *server) unsealBYOK(blob []byte) ([]byte, error) {
 		return nil, err
 	}
 	return enc.Open(key, blob[32:], []byte("fid-byok-v1"))
+}
+
+// emitMetering pushes the SIGNED receipt (metadata only — tenant/model/token
+// counts, NO prompt/response content) to the configured metering webhook so the
+// partner's control plane can attribute usage per user and bill. The receipt is
+// Ed25519-signed by the enclave, so the recipient can verify it's genuine and
+// unforgeable. Best-effort, async — never blocks or logs content.
+func (s *server) emitMetering(signed receipt.Signed) {
+	if s.meteringURL == "" {
+		return
+	}
+	go func() {
+		b, err := json.Marshal(signed)
+		if err != nil {
+			return
+		}
+		body, _ := json.Marshal(map[string]string{"receipt": base64.StdEncoding.EncodeToString(b)})
+		req, err := http.NewRequest("POST", s.meteringURL, bytes.NewReader(body))
+		if err != nil {
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if resp, err := s.http.Do(req); err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
 }
 
 func envOr(k, d string) string {
