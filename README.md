@@ -27,11 +27,15 @@ end-to-end-encrypted channel, and **fails closed** on any mismatch.
 `cmd/client` + `cmd/mock-upstream` are a reference client and a local mock for the
 `scripts/demo.sh` end-to-end.
 
-## What's deliberately NOT here (closed — `fidrouter-platform`)
-The **product and control plane** — none of which affects verifiability:
-- product frontend, partner console, dashboards, billing/reconciliation;
-- **cp-adapter** (turns a New API `sk-` into a capability token) and New API integration;
-- registry *authoring/ops* (the public `registry.json` is served here; it's *authored* under review on the closed side).
+## Companion repos
+- **`fidrouter-cp-adapter`** (OPEN) — the control-plane bridge: turns a New API `sk-` into
+  a capability token this enclave verifies. Open so any relay operator can integrate and
+  audit it; you bundle it beside your own New API.
+- **`fidrouter-platform`** (closed) — the product & operator plane, none of which affects
+  verifiability: product frontend, partner console, dashboards, billing/reconciliation,
+  and registry *authoring/ops* (the public `registry.json` is served from this repo's
+  `registry/`; it's *authored* under review on the closed side, then committed here —
+  git history is the transparency log).
 
 **No secrets here either:** the enclave identity seed and the control-plane signing
 key are injected/sealed at boot — never in the image. `.env` and `config/keys.json`
