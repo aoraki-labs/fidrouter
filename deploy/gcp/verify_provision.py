@@ -28,13 +28,16 @@ def startup_script(ip):
         "/opt/vp/verify-page/server.py": os.path.join(ROOT, "verify-page", "server.py"),
         "/opt/vp/verify-page/registry.json": os.path.join(ROOT, "verify-page", "registry.json"),
         "/opt/vp/sdk/python/fidrouter_verify.py": os.path.join(ROOT, "sdk", "python", "fidrouter_verify.py"),
+        # partner console: metering ingest (verifies signed receipts) + usage board + embedded docs
+        "/opt/vp/console/server.py": os.path.join(ROOT, "console", "server.py"),
+        "/opt/vp/docs/DESIGN.md": os.path.join(ROOT, "docs", "DESIGN.md"),
     }
     lines = [
         "#!/bin/bash", "set -e",
         "export DEBIAN_FRONTEND=noninteractive",
         "apt-get update -y", "apt-get install -y python3-pip",
         "pip3 install --break-system-packages cryptography || pip3 install cryptography",
-        "mkdir -p /opt/vp/verify-page /opt/vp/explorer /opt/vp/sdk/python",
+        "mkdir -p /opt/vp/verify-page /opt/vp/explorer /opt/vp/sdk/python /opt/vp/console /opt/vp/docs",
     ]
     for dst, src in files.items():
         lines.append(f"base64 -d > {dst} <<'B64'\n{b64(src)}\nB64")
@@ -49,12 +52,26 @@ def startup_script(ip):
         "[Install]", "WantedBy=multi-user.target",
         "EOF",
         "systemctl daemon-reload", "systemctl enable --now vp",
+        # partner console on :8082 (metering ingest + usage board + docs)
+        "cat > /etc/systemd/system/console.service <<'EOF'",
+        "[Unit]", "Description=fidrouter partner console", "After=network-online.target",
+        "[Service]",
+        "Environment=PORT=8082",
+        "Environment=REGISTRY_PATH=/opt/vp/verify-page/registry.json",
+        "Environment=DOCS_PATH=/opt/vp/docs/DESIGN.md",
+        "WorkingDirectory=/opt/vp/console",
+        "ExecStart=/usr/bin/python3 /opt/vp/console/server.py",
+        "Restart=always", "RestartSec=3",
+        "[Install]", "WantedBy=multi-user.target",
+        "EOF",
+        "systemctl daemon-reload", "systemctl enable --now console",
     ]
     # HTTPS via Caddy auto-TLS. Domain later: use sslip.io (public wildcard DNS
     # that resolves <ip-dashed>.sslip.io -> ip), so Let's Encrypt issues a REAL
     # trusted cert with no domain ownership. Static IP keeps the hostname stable.
     dash = ip.replace(".", "-")
     hv = f"verify.{dash}.sslip.io"
+    hc = f"console.{dash}.sslip.io"
     lines += [
         "curl -fsSL https://github.com/caddyserver/caddy/releases/download/v2.8.4/caddy_2.8.4_linux_amd64.tar.gz | tar -xz -C /usr/local/bin caddy",
         "chmod +x /usr/local/bin/caddy",
@@ -63,6 +80,9 @@ def startup_script(ip):
         "cat > /etc/caddy/Caddyfile <<EOF",
         f"{hv} {{",
         "  reverse_proxy localhost:8080",
+        "}",
+        f"{hc} {{",
+        "  reverse_proxy localhost:8082",
         "}",
         "EOF",
         "cat > /etc/systemd/system/caddy.service <<'EOF'",
@@ -82,6 +102,7 @@ def ensure_firewall(p):
     # Separate idempotent rules per port (firewall PATCH on an existing rule is
     # unreliable; creating a distinct rule always works and no-ops if present).
     for name, port in (("fidr-allow-verify", "8080"), ("fidr-allow-explorer", "8081"),
+                       ("fidr-allow-console", "8082"),
                        ("fidr-allow-web-80", "80"), ("fidr-allow-web-443", "443")):
         try:
             gcp.post(f"/projects/{p}/global/firewalls", {
@@ -157,12 +178,14 @@ def main():
     inst = gcp.get(f"/projects/{p}/zones/{z}/instances/{NAME}")
     ip = inst["networkInterfaces"][0].get("accessConfigs", [{}])[0].get("natIP")
     dash = (ip or "").replace(".", "-")
-    json.dump({"ip": ip, "verify_https": f"https://verify.{dash}.sslip.io"},
+    json.dump({"ip": ip, "verify_https": f"https://verify.{dash}.sslip.io",
+               "console_https": f"https://console.{dash}.sslip.io"},
               open(os.path.join(HERE, "verify_state.json"), "w"))
     print(f"\n{NAME} status={inst.get('status')} ip={ip}")
     print("give it ~2-3 min for pip + caddy install + Let's Encrypt issuance, then:")
-    print(f"  trust page (HTTPS):  https://verify.{dash}.sslip.io")
-    print(f"  (plain http fallback: http://{ip}:8080)")
+    print(f"  trust page (HTTPS):    https://verify.{dash}.sslip.io")
+    print(f"  partner console:       https://console.{dash}.sslip.io")
+    print(f"  (plain http fallback:  http://{ip}:8080  /  http://{ip}:8082)")
 
 
 if __name__ == "__main__":

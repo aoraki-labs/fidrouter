@@ -1,21 +1,21 @@
 {
-  "_comment": "PUBLIC verification registry \u2014 the neutral trust anchor. Maps each measured build to its open-source commit + reproducible-build recipe, and lists the endpoints that should be running it. The verification service live-checks each endpoint's attestation against this. This MUST be run independently of any relay operator (an operator who controls the verifier can fake it).",
+  "_comment": "PUBLIC verification registry — the neutral trust anchor. Maps each measured build to its open-source commit + reproducible-build recipe, and lists the endpoints that should be running it. The verification service live-checks each endpoint's attestation against this. This MUST be run independently of any relay operator (an operator who controls the verifier can fake it).",
   "source_url": "https://github.com/aoraki-labs/fidrouter",
   "builds": {
-    "sha256:332d19c5b78473fc3ffe364fb7670a775faa962ba0e49a975af7a6c6ba761966": {
-      "name": "fidrouter data plane (distroless, reproducible, sealed BYOK)",
+    "sha256:08b44d2113a530a71563c28a9a97d49b401bef7dad889695b33fc2b8a2818d0d": {
+      "name": "fidrouter data plane (distroless, reproducible, sealed BYOK, metering)",
       "source": "cmd/fid-proxy (Apache-2.0)",
       "reproducible_build": "bash scripts/reproduce.sh (binary bit-reproducible; verify live image content)",
-      "identity_pub_hex": "810d683af691099d3ebd9313dd2605c97a73f5cb446e9e6cbb035a6555aaef57",
-      "published_at": "2026-08-03"
+      "identity_pub_hex": "f8546d03ebc1aac4c974fdeb4d34662b26ce818539070e5a0e936a608cb35f95",
+      "published_at": "2026-08-04"
     }
   },
   "endpoints": [
     {
-      "name": "fidrouter \u00b7 internal BYOK (Anthropic)",
-      "platform": "GCP Confidential Space \u00b7 Intel TDX",
+      "name": "fidrouter · internal BYOK (Anthropic)",
+      "platform": "GCP Confidential Space · Intel TDX",
       "base_url": "http://34.158.56.83:9090",
-      "expected_measurement": "sha256:332d19c5b78473fc3ffe364fb7670a775faa962ba0e49a975af7a6c6ba761966",
+      "expected_measurement": "sha256:08b44d2113a530a71563c28a9a97d49b401bef7dad889695b33fc2b8a2818d0d",
       "cs_audience": "fidrouter"
     }
   ]

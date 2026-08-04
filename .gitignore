@@ -25,3 +25,6 @@ explorer/log.jsonl
 dist/
 __pycache__/
 *.pyc
+
+# CLOSED control-plane (cp-adapter, reconciler) — separate private repo, never in the public one
+control-plane/

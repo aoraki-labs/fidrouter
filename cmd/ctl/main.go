@@ -49,6 +49,14 @@ func main() {
 		k.ExpectedMeasurement = os.Args[2]
 		writeJSON(filepath.Join(dir(), "keys.json"), k)
 		fmt.Println("ExpectedMeasurement =", os.Args[2])
+	case "publish-public": // write config/public.json (cp_pub + expected measurement) — the
+		// ONLY key material safe to bake into the image. Regenerate after `init` so the
+		// baked cp_pub matches the control-plane signing key.
+		k := loadKeys()
+		writeJSON(filepath.Join(dir(), "public.json"), config.PublicConfig{
+			CPPub: k.CPPub, ExpectedMeasurement: k.ExpectedMeasurement,
+		})
+		fmt.Println("wrote public.json (cp_pub matches current keys.json)")
 	default:
 		fmt.Println("unknown subcommand:", os.Args[1])
 		os.Exit(2)

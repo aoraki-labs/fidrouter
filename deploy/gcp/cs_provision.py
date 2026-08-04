@@ -147,7 +147,10 @@ def main():
         "metadata": {"items": [
             {"key": "tee-image-reference", "value": f"{ar_host}/{p}/{REPO}/{IMAGE}@{digest}"},
             {"key": "tee-restart-policy", "value": "Never"},
-            {"key": "tee-container-log-redirect", "value": "true"},
+            # NB: tee-container-log-redirect is rejected by the hardened (production)
+            # CS image unless the image opts in via a launch-policy label. We DON'T
+            # redirect: the container logs metadata only, and serial console is enough
+            # for ops — not shipping logs anywhere is more on-brand for a no-log relay.
             *tee_env,
         ]},
         "serviceAccounts": [{"email": "default", "scopes": ["https://www.googleapis.com/auth/cloud-platform"]}],
