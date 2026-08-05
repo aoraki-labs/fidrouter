@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "fidrouter public registry",
+  "description": "The neutral trust anchor: measurement -> reproducible-build + enclave identity key, plus the endpoints that should be running each build. Authored under review by the platform, committed here so git history is the transparency log. The verify SDK checks a live endpoint's attestation against this before trusting it.",
+  "type": "object",
+  "required": ["builds", "endpoints"],
+  "properties": {
+    "source_url": {"type": "string"},
+    "builds": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["identity_pub_hex"],
+        "properties": {
+          "name": {"type": "string"},
+          "source": {"type": "string"},
+          "reproducible_build": {"type": "string"},
+          "identity_pub_hex": {"type": "string", "description": "ed25519 enclave identity public key (hex); the receipt/attestation signer"},
+          "published_at": {"type": "string"}
+        }
+      },
+      "description": "keyed by measurement (e.g. sha256:...) — the reproducible image digest the enclave attests"
+    },
+    "endpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["base_url", "expected_measurement"],
+        "properties": {
+          "name": {"type": "string"},
+          "platform": {"type": "string"},
+          "base_url": {"type": "string"},
+          "expected_measurement": {"type": "string"},
+          "cs_audience": {"type": "string"}
+        }
+      }
+    }
+  }
+}

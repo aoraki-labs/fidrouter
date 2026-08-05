@@ -20,12 +20,17 @@ end-to-end-encrypted channel, and **fails closed** on any mismatch.
 | `cmd/fid-proxy` + `internal/` | **The enclave data plane.** The only component that ever sees a plaintext prompt (in RAM); writes **no** request/response body anywhere. Serves OpenAI-compatible `/v1/chat/completions` + attested `/v1/infer`, and emits signed metadata receipts. | It's *the code being attested*. You verify this. |
 | `sdk/python`, `sdk/ts` | **Verify SDK.** Attestation check, X25519+AES-GCM E2EE, Ed25519 receipt verification (anti-downgrade) — all fail-closed. `fid.OpenAI` is a drop-in for the OpenAI client that does all of this under the hood. | The verifier must be auditable too, or "verify" is just another "trust". |
 | `deploy/gcp` + `scripts/reproduce.sh` | **Reproducible build + launch.** Rebuild this source → get the same image digest the enclave attests. | Reproducibility is what ties the measurement to *this* code. |
-| `verify-page/` + `registry.json` | **Neutral verification page + registry** (measurement → this source + enclave pubkey). Runs on a host independent of any relay operator. | The trust anchor can't be controlled by the operator, and its checker must be open. Not `fid-proxy`, but core to "verify". |
+| `registry/registry.json` (+ `schema.json`) | **The public registry** — measurement → this source + enclave pubkey + the endpoints running it. Authored under review on the platform, committed here so **git history is the transparency log**. | The trust anchor's data must be public + append-only-auditable; anyone recomputes the measurement from source. |
 | `cmd/ctl` (`seal-byok`) | **Client-side tooling** a key owner runs to seal their upstream key *to a specific attested enclave* (operator-blind BYOK). | The sealing party must be able to audit what they run. |
-| `docs/WHITEPAPER.md`, `VERIFICATION.md`, `DESIGN.md` | Threat model, how-to-verify, and the product/architecture design. | — |
+| `docs/WHITEPAPER.md`, `VERIFICATION.md` | Threat model + how to verify a live endpoint yourself. | The spec of what's proven must be public. |
 
 `cmd/client` + `cmd/mock-upstream` are a reference client and a local mock for the
 `scripts/demo.sh` end-to-end.
+
+> **The verifier that matters is the SDK, and it's here.** The hosted *verify page* (a
+> convenience UI) and the product/architecture docs live in `fidrouter-platform`; the
+> **independent** verification — what makes "don't trust, verify" real — is the open
+> `sdk/` + reproducible build + this registry, none of which the operator can fake.
 
 ## Companion repos
 - **`fidrouter-cp-adapter`** (OPEN) — the control-plane bridge: turns a New API `sk-` into
