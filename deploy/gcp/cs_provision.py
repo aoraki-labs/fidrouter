@@ -135,6 +135,14 @@ def main():
             print("delete fid-proxy-cs:", e)
 
     cs_image = gcp.get(f"/projects/confidential-space-images/global/images/family/{fam}")["selfLink"]
+    # pin the reserved static IP (fid-proxy-ip) so the endpoint URL survives rebuilds
+    try:
+        enc_ip = gcp.get(f"/projects/{p}/regions/{r}/addresses/fid-proxy-ip")["address"]
+    except gcp.GcpError:
+        enc_ip = None
+    accessconf = {"type": "ONE_TO_ONE_NAT", "name": "External NAT"}
+    if enc_ip:
+        accessconf["natIP"] = enc_ip
     body = {
         "name": "fid-proxy-cs",
         "machineType": f"projects/{p}/zones/{z}/machineTypes/c3-standard-4",
@@ -143,7 +151,7 @@ def main():
         "scheduling": {"onHostMaintenance": "TERMINATE"},
         "disks": [{"boot": True, "autoDelete": True, "initializeParams": {"sourceImage": cs_image, "diskSizeGb": "20"}}],
         "networkInterfaces": [{"network": f"projects/{p}/global/networks/fid-router-net",
-                               "accessConfigs": [{"type": "ONE_TO_ONE_NAT", "name": "External NAT"}]}],
+                               "accessConfigs": [accessconf]}],
         "metadata": {"items": [
             {"key": "tee-image-reference", "value": f"{ar_host}/{p}/{REPO}/{IMAGE}@{digest}"},
             {"key": "tee-restart-policy", "value": "Never"},

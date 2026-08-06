@@ -20,8 +20,8 @@ ENV FIDPROXY_ATTESTER=gcp-cs \
     FIDPROXY_POOL_PLAINTEXT=/app/config/pool.plain.json \
     FIDPROXY_ADDR=:9090 \
     FID_CS_AUDIENCE=fidrouter \
-    FIDPROXY_METERING_URL=https://console.136-85-124-88.sslip.io/ingest \
-    FIDPROXY_VERIFY_URL=https://verify.136-85-124-88.sslip.io
+    FIDPROXY_METERING_URL=https://console.fidcore.xyz/ingest \
+    FIDPROXY_VERIFY_URL=https://app.fidcore.xyz
 LABEL "tee.launch_policy.allow_env_override"="FID_ANTHROPIC_KEY,FID_IDENTITY_SEED"
 EXPOSE 9090
 ENTRYPOINT ["/app/fid-proxy"]
