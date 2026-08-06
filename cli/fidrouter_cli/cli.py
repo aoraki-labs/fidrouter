@@ -16,9 +16,7 @@ import os
 import sys
 import urllib.request
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, "..", "sdk", "python"))
-from fidrouter_verify import FidClient, verify_receipt  # noqa: E402
+from .verify import FidClient, verify_receipt
 
 PLATFORM = os.environ.get("FIDROUTER_PLATFORM", "https://app.fidcore.xyz").rstrip("/")
 

@@ -9,9 +9,12 @@ curl -fsSL https://app.fidcore.xyz/enable.sh | bash        # interactive
 ```
 Bundles cp-adapter beside your gateway, generates a CP keypair if needed, prints the next steps.
 
-## 2. CLI (`cli/fidrouter`) — JSON out, exit-code semantics
+## 2. CLI (`pip install fidrouter`) — JSON out, exit-code semantics
 ```bash
-fidrouter verify http://enclave.fidcore.xyz:9090     # independently attest an endpoint
+pip install "git+https://github.com/aoraki-labs/fidrouter@main#subdirectory=cli"   # or a release wheel
+```
+```bash
+fidrouter verify http://enclave.fidcore.xyz:9090      # independently attest an endpoint
 fidrouter endpoints                                   # list registered endpoints
 fidrouter receipt <X-Fid-Receipt>                     # verify a signed receipt
 fidrouter call --endpoint 3 --key sk-… --model claude-opus-5 --message "hi"

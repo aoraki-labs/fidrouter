@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fidrouter"
+version = "0.1.0"
+description = "CLI + verify SDK for fidrouter — a verifiable, no-log LLM relay"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "aoraki-labs" }]
+dependencies = ["cryptography>=42"]
+
+[project.urls]
+Homepage = "https://app.fidcore.xyz"
+Source = "https://github.com/aoraki-labs/fidrouter"
+
+[project.scripts]
+fidrouter = "fidrouter_cli.cli:main"
+
+[tool.setuptools]
+packages = ["fidrouter_cli"]
