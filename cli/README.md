@@ -11,7 +11,8 @@ Bundles cp-adapter beside your gateway, generates a CP keypair if needed, prints
 
 ## 2. CLI (`pip install fidrouter`) — JSON out, exit-code semantics
 ```bash
-pip install "git+https://github.com/aoraki-labs/fidrouter@main#subdirectory=cli"   # or a release wheel
+pip install https://github.com/aoraki-labs/fidrouter/releases/download/cli-v0.1.0/fidrouter-0.1.0-py3-none-any.whl
+# (or, with modern pip:  pip install "git+https://github.com/aoraki-labs/fidrouter@main#subdirectory=cli")   # or a release wheel
 ```
 ```bash
 fidrouter verify http://enclave.fidcore.xyz:9090      # independently attest an endpoint
