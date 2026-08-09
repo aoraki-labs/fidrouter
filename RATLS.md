@@ -35,9 +35,17 @@ context). Backward-compatible: plain-HTTP enclaves have no `tls_pub` → behavio
 Proven end-to-end against the real binary (`FIDPROXY_TLS=1`, mock attester): positive verifies,
 a mismatched cert is refused.
 
-**Still gated OFF in prod.** Turning `FIDPROXY_TLS=1` on rebuilds the enclave ⇒ **new
-measurement** ⇒ re-seal BYOK + registry update, and the released CLI wheel must be re-cut
-(`cli-v0.1.1`) so users get the T5 verifier. Next: T4 (surface evidence) + T7 (fold exchange).
+**T7 landed** — the enclave now accepts a **raw gateway key** and exchanges it in-enclave via
+cp-adapter (`FIDPROXY_CP_ADAPTER_URL`) when the credential isn't already a capability token
+(`cmd/fid-proxy` `resolveCapability`/`authClaims`, used by `/v1/infer`, `/v1/chat/completions`,
+`/v1/models`). So with RA-TLS on, a stock client just sends `base_url` + its own key. Unit
+test `TestT7ResolveCapability` covers passthrough / exchange / refuse-without-adapter. Safe
+because the key only lands in-enclave (RA-TLS terminates TLS here; `/v1/infer` is E2EE-sealed).
+
+**Still gated OFF in prod.** Turning `FIDPROXY_TLS=1` (+ `FIDPROXY_CP_ADAPTER_URL`) on rebuilds
+the enclave ⇒ **new measurement** ⇒ re-seal BYOK + registry update, and the released CLI wheel
+must be re-cut (`cli-v0.1.1`) so users get the T5 verifier. Remaining: T4 (surface evidence),
+T6 (registry anchor), T8 (rotation), T9 (attestation-CA), T10 (repro + tamper test).
 
 ## Tasks (ordered; suggested path 1→2→3→5→7→6/8→9)
 

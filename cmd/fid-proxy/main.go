@@ -56,11 +56,12 @@ type server struct {
 	at       tee.Attester
 	km       kms.KeyProvider
 	rt       *routing.Router
-	cpPub       ed25519.PublicKey
-	upstream    string
-	http        *http.Client
-	meteringURL string // if set, each signed receipt (metadata, NO content) is POSTed here
-	verifyURL   string // shown on the root page so a human can go verify
+	cpPub        ed25519.PublicKey
+	upstream     string
+	http         *http.Client
+	meteringURL  string // if set, each signed receipt (metadata, NO content) is POSTed here
+	verifyURL    string // shown on the root page so a human can go verify
+	cpAdapterURL string // if set, a raw gateway key is exchanged here for a capability token (T7)
 
 	// sealed BYOK (operator-blind): a per-boot X25519 keypair generated INSIDE
 	// the enclave (RAM only, never persisted, operator never sees the private
@@ -197,8 +198,9 @@ func main() {
 		sealPriv:    sealPriv,
 		sealPub:     sealPriv.PublicKey().Bytes(),
 		byok:        map[string]string{},
-		meteringURL: os.Getenv("FIDPROXY_METERING_URL"),
-		verifyURL:   os.Getenv("FIDPROXY_VERIFY_URL"),
+		meteringURL:  os.Getenv("FIDPROXY_METERING_URL"),
+		verifyURL:    os.Getenv("FIDPROXY_VERIFY_URL"),
+		cpAdapterURL: os.Getenv("FIDPROXY_CP_ADAPTER_URL"),
 	}
 
 	http.HandleFunc("/", s.handleRoot)
@@ -295,7 +297,8 @@ func (s *server) handleInfer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1) capability token (control plane authz) — enclave never touches user DB.
-	claims, err := token.Verify(s.cpPub, in.Token)
+	//    T7: in.Token may be a raw gateway key; resolveCapability exchanges it in-enclave.
+	claims, err := s.authClaims(in.Token)
 	if err != nil {
 		http.Error(w, "unauthorized: "+err.Error(), 401)
 		return
@@ -564,8 +567,52 @@ func bearerToken(r *http.Request) string {
 	return ""
 }
 
+// resolveCapability (T7) turns a presented credential into a CP capability token. If it
+// already verifies as one, it's used as-is; otherwise — a raw gateway key (e.g. "sk-...") —
+// the enclave exchanges it via cp-adapter internally. This folds the exchange server-side so
+// a stock client just sends base_url + its own key (safe because the key only lands in the
+// enclave: over RA-TLS TLS terminates here, and on the /v1/infer path it arrives E2EE-sealed).
+func (s *server) resolveCapability(cred string) (string, error) {
+	cred = strings.TrimSpace(cred)
+	if cred == "" {
+		return "", fmt.Errorf("missing credential")
+	}
+	if _, err := token.Verify(s.cpPub, cred); err == nil {
+		return cred, nil // already a capability token
+	}
+	if s.cpAdapterURL == "" {
+		return "", fmt.Errorf("not a capability token and no cp-adapter configured for exchange")
+	}
+	body, _ := json.Marshal(map[string]string{"key": cred})
+	resp, err := s.http.Post(strings.TrimRight(s.cpAdapterURL, "/")+"/exchange", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("cp-adapter exchange: %s %s", resp.Status, string(b[:min(len(b), 160)]))
+	}
+	var ex struct {
+		CapabilityToken string `json:"capability_token"`
+	}
+	if err := json.Unmarshal(b, &ex); err != nil || ex.CapabilityToken == "" {
+		return "", fmt.Errorf("cp-adapter returned no capability_token")
+	}
+	return ex.CapabilityToken, nil
+}
+
+// authClaims resolves a credential (capability token OR raw gateway key) and verifies it.
+func (s *server) authClaims(cred string) (token.Claims, error) {
+	tok, err := s.resolveCapability(cred)
+	if err != nil {
+		return token.Claims{}, err
+	}
+	return token.Verify(s.cpPub, tok)
+}
+
 func (s *server) handleModels(w http.ResponseWriter, r *http.Request) {
-	claims, err := token.Verify(s.cpPub, bearerToken(r))
+	claims, err := s.authClaims(bearerToken(r))
 	if err != nil {
 		http.Error(w, "unauthorized", 401)
 		return
@@ -578,7 +625,8 @@ func (s *server) handleModels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
-	claims, err := token.Verify(s.cpPub, bearerToken(r))
+	// T7: accepts a capability token OR a raw gateway key (exchanged in-enclave).
+	claims, err := s.authClaims(bearerToken(r))
 	if err != nil {
 		http.Error(w, "unauthorized: "+err.Error(), 401)
 		return
