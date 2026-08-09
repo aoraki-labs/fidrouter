@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fidrouter"
-version = "0.1.0"
+version = "0.1.1"
 description = "CLI + verify SDK for fidrouter — a verifiable, no-log LLM relay"
 readme = "README.md"
 requires-python = ">=3.9"

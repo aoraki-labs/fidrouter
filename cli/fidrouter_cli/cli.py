@@ -82,13 +82,12 @@ def cmd_call(a):
         print(json.dumps({"ok": False, "error": ex.get("error", "exchange failed")})); sys.exit(1)
     base = ex["enclave_url"].rstrip("/")
     meas = ex.get("expected_measurement", "")
-    try:  # fail-closed: verify before sending
-        FidClient(base_url=base, token="", pin_measurement=meas, cs_audience="fidrouter")._attest_and_verify()
+    try:  # full verified path: attest (fail-closed) + E2EE + capability token + signed receipt
+        client = FidClient(base_url=base, token=tok, pin_measurement=meas, cs_audience="fidrouter")
+        res = client.chat(a.model, [{"role": "user", "content": a.message}])
     except Exception as e:  # noqa: BLE001
-        print(json.dumps({"ok": False, "error": f"attestation failed: {e}"})); sys.exit(1)
-    resp = _post(base + "/v1/chat/completions", {"model": a.model,
-                 "messages": [{"role": "user", "content": a.message}]})
-    print(resp["choices"][0]["message"]["content"] if "choices" in resp else json.dumps(resp))
+        print(json.dumps({"ok": False, "error": str(e)})); sys.exit(1)
+    print(res.completion)
 
 
 def cmd_enable(a):
