@@ -21,6 +21,15 @@ Low-risk retrofit.
 - `internal/enc`, `internal/wire` — app-layer E2EE + request/response types.
 - `cmd/client/main.go` — fetches `/attestation`, pins measurement, does the handshake.
 
+## Progress
+**T1–T3 landed** (build + vet + unit test green in `golang:1.23`): per-boot in-enclave TLS
+cert (`internal/ratls`), TLS pubkey bound into the attestation bind (`internal/tee` — Mock/CS/TDX,
+`Quote.TLSPub`, opt-in), and HTTPS serving in `cmd/fid-proxy` gated by **`FIDPROXY_TLS=1`**.
+The gate keeps the current plain-HTTP + app-layer-E2EE path as default. **Do NOT flip
+`FIDPROXY_TLS=1` in production until T5** (verifier checks the TLS↔attestation binding) — and
+note that turning it on rebuilds the enclave ⇒ **new measurement**, so it needs a re-seal of
+BYOK + a registry update. Next: T5 (verifier), then T4 (evidence surfacing) + T7 (fold exchange).
+
 ## Tasks (ordered; suggested path 1→2→3→5→7→6/8→9)
 
 **T1 — In-enclave TLS keypair + self-signed cert at boot.**

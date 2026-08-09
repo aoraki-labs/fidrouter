@@ -33,6 +33,7 @@ const mrtdAbsOff = 48 + 136
 type TdxConfigfs struct {
 	idPriv      ed25519.PrivateKey
 	measurement string
+	tlsPub      []byte // RA-TLS: DER SPKI of the in-enclave TLS cert key (bound into report_data)
 	ctr         uint64
 	mu          sync.Mutex
 	sess        map[string]sessionEntry
@@ -56,6 +57,7 @@ func (t *TdxConfigfs) Platform() string               { return "gcp-tdx" }
 func (t *TdxConfigfs) Measurement() string            { return t.measurement }
 func (t *TdxConfigfs) IdentityPub() ed25519.PublicKey { return t.idPriv.Public().(ed25519.PublicKey) }
 func (t *TdxConfigfs) Sign(msg []byte) []byte         { return ed25519.Sign(t.idPriv, msg) }
+func (t *TdxConfigfs) SetTLSPub(spki []byte)          { t.tlsPub = spki }
 
 func (t *TdxConfigfs) Attest(nonce []byte) (Quote, error) {
 	priv, err := enc.NewX25519()
@@ -65,11 +67,14 @@ func (t *TdxConfigfs) Attest(nonce []byte) (Quote, error) {
 	ephPub := priv.PublicKey().Bytes()
 	idPub := t.IdentityPub()
 
-	// report_data = SHA256(nonce || ephemeral_pub || identity_pub), padded to 64B
+	// report_data = SHA256(nonce || ephemeral_pub || identity_pub [|| tls_pub]), padded to 64B
 	h := sha256.New()
 	h.Write(nonce)
 	h.Write(ephPub)
 	h.Write(idPub)
+	if len(t.tlsPub) > 0 { // RA-TLS: bind the TLS cert public key into report_data
+		h.Write(t.tlsPub)
+	}
 	reportData := make([]byte, 64)
 	copy(reportData, h.Sum(nil))
 
@@ -90,7 +95,7 @@ func (t *TdxConfigfs) Attest(nonce []byte) (Quote, error) {
 
 	return Quote{
 		Platform: "gcp-tdx", Measurement: t.measurement, Session: session,
-		Nonce: nonce, EphemeralPub: ephPub, IdentityPub: idPub, RawQuote: raw,
+		Nonce: nonce, EphemeralPub: ephPub, IdentityPub: idPub, TLSPub: t.tlsPub, RawQuote: raw,
 	}, nil
 }
 

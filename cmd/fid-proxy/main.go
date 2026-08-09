@@ -16,6 +16,7 @@ import (
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -33,6 +34,7 @@ import (
 	"fidrouter/internal/config"
 	"fidrouter/internal/enc"
 	"fidrouter/internal/kms"
+	"fidrouter/internal/ratls"
 	"fidrouter/internal/receipt"
 	"fidrouter/internal/routing"
 	"fidrouter/internal/tee"
@@ -208,6 +210,25 @@ func main() {
 	http.HandleFunc("/v1/models", s.handleModels)
 
 	addr := envOr("FIDPROXY_ADDR", ":9090")
+
+	// RA-TLS (opt-in via FIDPROXY_TLS=1): generate a per-boot TLS cert inside the
+	// enclave, bind its public key into the attestation, and terminate TLS here —
+	// so a stock HTTPS client that pins the measurement is talking to the attested
+	// build. Default stays plain HTTP until the verifier learns the binding (T5).
+	if os.Getenv("FIDPROXY_TLS") == "1" {
+		hosts := strings.Split(envOr("FIDPROXY_TLS_HOSTS", "enclave.fidcore.xyz"), ",")
+		cert, spki, err := ratls.Generate(hosts)
+		if err != nil {
+			log.Fatalf("[fid-proxy] ra-tls cert: %v", err)
+		}
+		at.SetTLSPub(spki)
+		log.Printf("[fid-proxy] RA-TLS on: TLS pubkey (%d-byte SPKI) bound into attestation; platform=%s measurement=%s addr=%s",
+			len(spki), at.Platform(), at.Measurement(), addr)
+		srv := &http.Server{Addr: addr, TLSConfig: &tls.Config{
+			Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}}
+		log.Fatal(srv.ListenAndServeTLS("", ""))
+	}
+
 	log.Printf("[fid-proxy] platform=%s measurement=%s tamper=%v addr=%s",
 		at.Platform(), at.Measurement(), tamper, addr)
 	log.Fatal(http.ListenAndServe(addr, nil))

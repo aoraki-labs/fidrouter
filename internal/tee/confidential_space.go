@@ -43,6 +43,7 @@ type ConfidentialSpace struct {
 	audience    string
 	endpoint    string // "/v1/token" (Google) or "/v1/intel/token" (Intel Trust Authority)
 	measurement string // image_digest
+	tlsPub      []byte // RA-TLS: DER SPKI of the in-enclave TLS cert key (bound into eat_nonce)
 	hc          *http.Client
 
 	mu   sync.Mutex
@@ -78,6 +79,7 @@ func (c *ConfidentialSpace) Platform() string               { return "gcp-cs" }
 func (c *ConfidentialSpace) Measurement() string            { return c.measurement }
 func (c *ConfidentialSpace) IdentityPub() ed25519.PublicKey { return c.idPriv.Public().(ed25519.PublicKey) }
 func (c *ConfidentialSpace) Sign(msg []byte) []byte         { return ed25519.Sign(c.idPriv, msg) }
+func (c *ConfidentialSpace) SetTLSPub(spki []byte)          { c.tlsPub = spki }
 
 func (c *ConfidentialSpace) Attest(nonce []byte) (Quote, error) {
 	priv, err := enc.NewX25519()
@@ -91,6 +93,9 @@ func (c *ConfidentialSpace) Attest(nonce []byte) (Quote, error) {
 	h.Write(nonce)
 	h.Write(ephPub)
 	h.Write(idPub)
+	if len(c.tlsPub) > 0 { // RA-TLS: bind the TLS cert public key into eat_nonce
+		h.Write(c.tlsPub)
+	}
 	bind := hex.EncodeToString(h.Sum(nil)) // 64 chars, within the 10-74 nonce range
 
 	tok, err := c.fetchToken([]string{bind})
@@ -110,7 +115,7 @@ func (c *ConfidentialSpace) Attest(nonce []byte) (Quote, error) {
 
 	return Quote{
 		Platform: "gcp-cs", Measurement: c.measurement, Session: session,
-		Nonce: nonce, EphemeralPub: ephPub, IdentityPub: idPub, RawQuote: []byte(tok),
+		Nonce: nonce, EphemeralPub: ephPub, IdentityPub: idPub, TLSPub: c.tlsPub, RawQuote: []byte(tok),
 	}, nil
 }
 

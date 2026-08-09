@@ -38,6 +38,7 @@ type Quote struct {
 	EphemeralPub []byte `json:"ephemeral_pub"`
 	ReportData   string `json:"report_data"`
 	IdentityPub  []byte `json:"identity_pub"`
+	TLSPub       []byte `json:"tls_pub,omitempty"` // RA-TLS: DER SPKI of the in-enclave TLS cert key, bound into the quote
 	Sig          []byte `json:"sig"`
 	RawQuote     []byte `json:"raw_quote,omitempty"` // real TDX quote (DCAP-verifiable); empty for mock
 }
@@ -47,6 +48,9 @@ type Attester interface {
 	Platform() string
 	Measurement() string
 	IdentityPub() ed25519.PublicKey
+	// SetTLSPub binds the in-enclave TLS cert public key (DER SPKI) into every
+	// subsequent quote (RA-TLS). Called once at boot; nil/unset ⇒ no TLS binding.
+	SetTLSPub(spki []byte)
 	// Attest opens a session bound to nonce and returns a signed quote.
 	Attest(nonce []byte) (Quote, error)
 	// SessionKey re-derives the symmetric channel key for a live session using
@@ -79,6 +83,7 @@ type Mock struct {
 	platform    string
 	measurement string
 	idPriv      ed25519.PrivateKey
+	tlsPub      []byte
 
 	mu   sync.Mutex
 	sess map[string]sessionEntry
@@ -97,6 +102,7 @@ func (m *Mock) Platform() string               { return m.platform }
 func (m *Mock) Measurement() string            { return m.measurement }
 func (m *Mock) IdentityPub() ed25519.PublicKey { return m.idPriv.Public().(ed25519.PublicKey) }
 func (m *Mock) Sign(msg []byte) []byte         { return ed25519.Sign(m.idPriv, msg) }
+func (m *Mock) SetTLSPub(spki []byte)          { m.tlsPub = spki }
 
 func (m *Mock) Attest(nonce []byte) (Quote, error) {
 	priv, err := enc.NewX25519()
@@ -116,7 +122,12 @@ func (m *Mock) Attest(nonce []byte) (Quote, error) {
 	m.sess[session] = sessionEntry{priv: priv, exp: time.Now().Add(2 * time.Minute)}
 	m.mu.Unlock()
 
-	rd := sha256.Sum256(append(append([]byte{}, nonce...), ephPub...))
+	// bind = H(nonce || ephemeral_pub [|| tls_pub]); RA-TLS folds the TLS cert key in.
+	rdIn := append(append([]byte{}, nonce...), ephPub...)
+	if len(m.tlsPub) > 0 {
+		rdIn = append(rdIn, m.tlsPub...)
+	}
+	rd := sha256.Sum256(rdIn)
 	reportData := hex.EncodeToString(rd[:])
 
 	// signed body = measurement || report_data || ephemeral_pub
@@ -129,6 +140,7 @@ func (m *Mock) Attest(nonce []byte) (Quote, error) {
 		EphemeralPub: ephPub,
 		ReportData:   reportData,
 		IdentityPub:  m.IdentityPub(),
+		TLSPub:       m.tlsPub,
 		Sig:          ed25519.Sign(m.idPriv, body),
 	}, nil
 }
