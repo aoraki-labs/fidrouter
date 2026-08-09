@@ -1,50 +1,50 @@
-# 如何验证一个 fidrouter 中转真的"无日志"（信任模型）
+# How to verify that a fidrouter relay really is "no-log" (trust model)
 
-> 回答："client 那边是明文，怎么让使用某中转的终端用户相信它真的用了 fidrouter、真的不记录？"
+> Answering: "The client side is plaintext, so how do you make an end user of some relay believe it really uses fidrouter and really keeps no records?"
 
-## 核心原则
-**信任不能来自"中转声称用了 fidrouter"。信任必须由用户一方执行，或可被与中转无关的第三方核对。**
-被验证方自己控制验证器 = 没有验证（等同 TLS：证书由浏览器校验才有意义，不是服务器说"我有证书"）。
+## Core principle
+**Trust cannot come from a relay claiming it uses fidrouter. Trust must be carried out by the user's side, or be checkable by a third party unrelated to the relay.**
+The party being verified controlling the verifier = no verification (same as TLS: a certificate only means something when the browser validates it, not when the server says "I have a certificate").
 
-## 信任梯子（从无效到最强）
+## Trust ladder (from invalid to strongest)
 
-### 第 0 级 ❌ 无效
-中转官网写"我们用了 fidrouter / 无日志"。纯口头，等于没有。
+### Level 0 ❌ Invalid
+The relay's website says "we use fidrouter / no-log." Pure assertion, worth nothing.
 
-### 第 1 级 ✅ 主机制：用户侧运行开源 verify SDK
-在**发送 prompt 之前**，SDK（在用户设备上）自动：
-1. `GET /attestation?nonce=<随机>` 取 quote；
-2. 验 `measurement == 公开注册表里已发布的可复现构建值`；
-3. 验 quote 签名链到硬件根（Intel TDX DCAP → Intel PCS）；
-4. 验 `report_data == H(nonce ‖ ephemeral_pub)`（防重放 + 绑定信道密钥）；
-5. 任一步失败 → **fail-closed，绝不发送**。
-通过后才把 prompt **就地封装**给"被证明过的密钥"。→ 信任来自**用户自己机器上的代码**，与中转说辞无关。
-> "client 那边是明文"没问题：明文只在用户设备内、封装前存在；只要 SDK 可信（开源、可自 build），未验证前明文不出设备。
+### Level 1 ✅ Primary mechanism: the user's side runs the open-source verify SDK
+**Before sending any prompt**, the SDK (on the user's device) automatically:
+1. `GET /attestation?nonce=<random>` to fetch the quote;
+2. verifies `measurement == the published reproducible-build value in the public registry`;
+3. verifies the quote's signature chains to the hardware root (Intel TDX DCAP → Intel PCS);
+4. verifies `report_data == H(nonce ‖ ephemeral_pub)` (replay protection + binding of the channel key);
+5. if any step fails → **fail-closed, never send**.
+Only after passing does it **seal the prompt in place** to the "attested key." → Trust comes from **code on the user's own machine**, independent of the relay's claims.
+> "The client side is plaintext" is fine: the plaintext exists only inside the user's device and only before sealing; as long as the SDK is trustworthy (open source, self-buildable), plaintext never leaves the device before verification.
 
-### 第 2 级 ✅ 事后可证：签名回执 + 公开透明日志
-每个响应带 **enclave 签名回执**（含 `measurement / model / req&resp hash / tokens`，**不含内容**），并追加到**公开 append-only 透明日志**。
-- 用户 App 或任意审计者事后可验："这条响应确实出自被证明的无日志 enclave"，且 `model==请求`（防降级）。
-- 可查 inclusion，防中转丢弃/篡改回执。
-- 非技术用户的 App 可据此展示 "✓ 已验证"。
+### Level 2 ✅ Provable after the fact: signed receipt + public transparency log
+Every response carries an **enclave-signed receipt** (containing `measurement / model / req&resp hash / tokens`, **without the content**), appended to a **public append-only transparency log**.
+- The user's App or any auditor can later verify: "this response really came from an attested no-log enclave," and that `model == request` (anti-downgrade).
+- Inclusion can be checked, preventing the relay from dropping or tampering with receipts.
+- A non-technical user's App can display "✓ Verified" based on this.
 
-### 第 3 级 ✅ 中立第三方：我们域名上的验证页/注册表
-一个**独立 monitor** 持续对已登记的中转 endpoint 做远程证明，公示"当前度量值 == 已发布"。**用户查我们的站，不查中转的自述。** 类比 CA / Sigstore 的中立公证。
+### Level 3 ✅ Neutral third party: a verification page / registry on our domain
+An **independent monitor** continuously performs remote attestation against registered relay endpoints and publicly shows "current measurement == published." **Users check our site, not the relay's self-description.** Analogous to the neutral notarization role of a CA / Sigstore.
 
-### 兜底：用户不掌控客户端时（消费级 App）
-- App 集成方**默认开启** SDK 验证，并把 "✓ 已验证" 徽章透传给终端用户；
-- 或提供**浏览器插件 / 独立验证器**由用户侧安装，绕过 App 自证。
+### Fallback: when the user doesn't control the client (consumer Apps)
+- The App integrator **enables SDK verification by default** and passes the "✓ Verified" badge through to the end user;
+- or provides a **browser extension / standalone verifier** to be installed on the user's side, bypassing the App's self-attestation.
 
-## 隐藏风险与对策
-- **风险**：中转自派一个**改过的"客户端"**，在封装前偷走明文 → 架空第 1 级。
-- **对策**：SDK **开源 + 由用户侧运行/审计**；并叠加第 2/3 级（回执 + 独立注册表）做**与中转无关**的二次核对。
+## Hidden risks and countermeasures
+- **Risk**: the relay ships a **modified "client"** of its own that steals the plaintext before sealing → nullifying Level 1.
+- **Countermeasure**: the SDK is **open source + run/audited on the user's side**; combined with Level 2/3 (receipt + independent registry) for a second, **relay-independent** cross-check.
 
-## 诚实边界
-与 TLS 同理：**只保护真正去验证的用户**。产品因此要让验证成为**默认路径**（SDK 自动验、App 默认显示徽章）并提供独立核对通道。且所有保证只覆盖**中转这一跳**；上游厂商的行为不在其内。
+## Honest boundary
+Same as TLS: **it only protects users who actually verify**. The product therefore has to make verification the **default path** (SDK verifies automatically, App shows the badge by default) and provide an independent checking channel. And all guarantees cover **only this one relay hop**; the upstream provider's behavior is out of scope.
 
-## 是否所有中转用户都"本地加密后再发"？
-- **用 verify SDK 时：是。** SDK 在用户设备上先做 attestation，再用 HPKE 把 prompt **就地封装给被证明过的密钥**，到中转的只有密文、只有被证明的 enclave 能解。
-- **只改 `base_url`、不验证不封装时：不是强保证。** 那是普通 TLS 到 enclave（线上加密、enclave 终止），但缺"仅被证明代码可解"的强绑定与客户端证据。
-- **产品目标**：让 attested-E2EE 成为**默认路径**。代价仅是一次**可复用**的 attestation 握手，仍是 drop-in（换 base_url + `verify=on`）。
+## Do all relay users "encrypt locally before sending"?
+- **When using the verify SDK: yes.** The SDK first performs attestation on the user's device, then uses HPKE to **seal the prompt in place to the attested key**; only ciphertext reaches the relay, and only the attested enclave can decrypt it.
+- **When only changing `base_url`, without verifying or sealing: not a strong guarantee.** That is ordinary TLS to the enclave (encrypted on the wire, terminated by the enclave), but it lacks the strong binding of "only attested code can decrypt" and lacks client-side evidence.
+- **Product goal**: make attested-E2EE the **default path**. The only cost is a single **reusable** attestation handshake, still drop-in (change base_url + `verify=on`).
 
-## 本仓库对应实现（PoC）
-`cmd/client` 已实现第 1 级（attest→验度量值/签名/nonce→fail-closed→封装→验回执含 model 防降级）。第 2 级回执已产出并被客户端校验；透明日志与第 3 级注册表见 plan B8 (P3)。
+## Corresponding implementation in this repo (PoC)
+`cmd/client` already implements Level 1 (attest → verify measurement/signature/nonce → fail-closed → seal → verify receipt including model for anti-downgrade). The Level 2 receipt is already produced and validated by the client; the transparency log and Level 3 registry are in plan B8 (P3).

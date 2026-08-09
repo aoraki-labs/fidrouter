@@ -1,40 +1,40 @@
-# fidrouter — 可验证的无日志 LLM 中转（技术白皮书 / 公开版）
+# fidrouter — Verifiable no-log LLM relay (technical whitepaper / public version)
 
-> 面向：想理解"为什么可以相信一个中转不记录我的 prompt"的开发者、企业安全评估者、合作中转站。
-> 本文只讲**中转这一跳**的可验证性；不承诺端到端隐私（见 §4 诚实边界）。
+> Audience: developers, enterprise security evaluators, and partner relays who want to understand "why you can trust that a relay does not record my prompt."
+> This document only covers the verifiability of **this one relay hop**; it does not promise end-to-end privacy (see §4 Honest boundary).
 
-## 1. 问题
-Token 聚合中转（"中转站"）在技术上必须终止用户连接、拿到**明文 prompt**、再注入上游厂商的真实 key 转发。因此运营方天生能读全部明文。现有方案（含 OpenRouter）都是**策略/合同型信任**——"我们承诺不记录"，但**无法证明**。用户只能选择相信。
+## 1. Problem
+A token-aggregating relay (a "relay station") must, technically, terminate the user connection, obtain the **plaintext prompt**, and then inject the upstream provider's real key to forward it. The operator is therefore inherently able to read all plaintext. Existing solutions (including OpenRouter) rely on **policy/contract-based trust** — "we promise not to record," but it **cannot be proven**. Users can only choose to believe.
 
-## 2. 方案：把第一跳从"相信"升级成"验证"
-fidrouter 把中转的**数据面**放进一个 **Intel TDX 机密虚拟机（enclave）**，并让用户在**发送任何内容之前**用**硬件远程证明**确认：
-- 正在运行的是一份**开源、可复现构建**的代码；
-- 这份代码**不记录、不落盘、不外泄** prompt；
-- prompt 只能在**被证明过的 enclave** 内解密——运营方、宿主机、数据库都读不到。
+## 2. Approach: upgrade the first hop from "believe" to "verify"
+fidrouter puts the relay's **data plane** inside an **Intel TDX confidential VM (enclave)**, and lets the user confirm, **before sending anything**, via **hardware remote attestation**:
+- what is running is a piece of **open-source, reproducibly built** code;
+- that this code **does not record, does not persist to disk, does not leak** the prompt;
+- the prompt can only be decrypted **inside the attested enclave** — the operator, the host, and the database cannot read it.
 
-明文的一生：`用户设备(明文) → 线路(E2EE 密封) → enclave RAM(明文, 唯一一瞬) → 上游(TLS)`。除 enclave 内那一瞬，全程密文。
+The life of the plaintext: `user device (plaintext) → wire (E2EE sealed) → enclave RAM (plaintext, a single instant) → upstream (TLS)`. Except for that single instant inside the enclave, it is ciphertext throughout.
 
-## 3. 架构（三个信任区）
-- **客户端 · verify SDK**：先验证、后发送；不通过即 fail-closed。
-- **enclave · 数据面 fid-proxy（开源、极小、可审计）**：attested E2EE 解密、缓存亲和路由、签名回执。**唯一碰明文的地方，仅在 RAM。**
-- **TEE 外 · 控制面（如 New API）**：用户/计费/配额/后台，只碰元数据，**永不终止 prompt 的 TLS**。
-- **KMS（attestation 门控）**：上游 key 的解密绑定 enclave 度量值，只有被证明的代码能取到明文 key。
+## 3. Architecture (three trust zones)
+- **Client · verify SDK**: verify first, send later; fail-closed if it does not pass.
+- **Enclave · data plane fid-proxy (open source, minimal, auditable)**: attested E2EE decryption, cache-affinity routing, signed receipts. **The only place that touches plaintext, and only in RAM.**
+- **Outside the TEE · control plane (e.g. New API)**: users/billing/quota/backend, touches only metadata, **never terminates the prompt's TLS**.
+- **KMS (attestation-gated)**: decryption of the upstream key is bound to the enclave measurement, so only attested code can obtain the plaintext key.
 
-## 4. 能证明什么 / 不能证明什么（诚实边界）
-- ✅ 我们这台中转**不记录、不留存、不外泄**你的 prompt，且跑的确是那份开源代码。
-- ✅ prompt 只能在被证明过的 enclave 内解密。
-- ✅ **路由真实性**：回执证明实际服务的就是你请求的模型（防偷偷降级）。
-- ❌ 不能证明 **OpenAI/Anthropic 等闭源上游**拿到明文后怎么处理——它们不提供客户可验证的证明。
-- **每条隐私声明必带限定**："本保证仅覆盖中转这一跳；prompt 会以明文交付你所选上游，之后受该上游自身 ZDR/企业条款约束。"
+## 4. What it can prove / cannot prove (honest boundary)
+- ✅ This relay of ours **does not record, does not retain, does not leak** your prompt, and what it runs really is that open-source code.
+- ✅ The prompt can only be decrypted inside the attested enclave.
+- ✅ **Routing authenticity**: the receipt proves the model actually served is the model you requested (prevents silent downgrade).
+- ❌ It cannot prove how **closed-source upstreams like OpenAI/Anthropic** handle the plaintext once they receive it — they do not provide customer-verifiable proof.
+- **Every privacy statement must carry a qualifier**: "This guarantee covers only this one relay hop; the prompt is delivered in plaintext to the upstream you chose, after which it is subject to that upstream's own ZDR / enterprise terms."
 
-## 5. 为什么必须开源（可验证性的前提）
-远程证明只证明"运行代码 == 度量值 X"。若 X 对应源码保密，用户无法确认它不记录——等于没验证。因此：
-- **必须开源 + 可复现构建**：数据面 `fid-proxy`、客户端 verify SDK、构建/度量流水线。
-- **不必开源**：控制面/计费/路由策略/后台（不碰明文、不在度量值内）。
-- 许可证 **Apache-2.0**。开源数据面是**信任的前提**，不是让利；壁垒在验证网络与合规，不在代理代码。
+## 5. Why it must be open source (the precondition of verifiability)
+Remote attestation only proves "running code == measurement X." If X corresponds to source code that is kept secret, the user cannot confirm it does not record — that is equivalent to no verification. Therefore:
+- **Must be open source + reproducible build**: the data plane `fid-proxy`, the client verify SDK, and the build/measurement pipeline.
+- **Need not be open source**: the control plane / billing / routing policy / backend (do not touch plaintext, not within the measurement).
+- License **Apache-2.0**. Open-sourcing the data plane is the **precondition of trust**, not a concession; the moat is in the verification network and compliance, not in the proxy code.
 
-## 6. 平台
-数据面只需 **CPU TEE（Intel TDX）**，不跑推理、无需 GPU。信任根应在 **Intel（CPU 厂商）** 而非云厂商——GCP C3 TDX 与阿里云 g8i TDX 都给裸 Intel-rooted DCAP quote；Azure 默认包成微软签 MAA；AWS 只有 AWS-rooted 的 Nitro（且要 vsock 拆分）。国内/不出境用**阿里云 g8i**（信任根仍是 Intel）。
+## 6. Platform
+The data plane only needs a **CPU TEE (Intel TDX)**, does not run inference, and needs no GPU. The trust root should be in **Intel (the CPU vendor)** rather than a cloud vendor — both GCP C3 TDX and Alibaba Cloud g8i TDX give a bare Intel-rooted DCAP quote; Azure by default wraps it into a Microsoft-signed MAA; AWS only has the AWS-rooted Nitro (and requires a vsock split). For domestic / no-cross-border use, use **Alibaba Cloud g8i** (the trust root is still Intel).
 
-## 7. 如何验证 / 如何信任
-见 [`VERIFICATION.md`](./VERIFICATION.md)。核心：**验证由用户一方执行或可被独立核对**，绝不依赖中转的自述。
+## 7. How to verify / how to trust
+See [`VERIFICATION.md`](./VERIFICATION.md). The core: **verification is carried out by the user's side or can be independently cross-checked**, and never relies on the relay's self-description.
