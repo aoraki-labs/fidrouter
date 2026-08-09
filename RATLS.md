@@ -25,10 +25,19 @@ Low-risk retrofit.
 **T1–T3 landed** (build + vet + unit test green in `golang:1.23`): per-boot in-enclave TLS
 cert (`internal/ratls`), TLS pubkey bound into the attestation bind (`internal/tee` — Mock/CS/TDX,
 `Quote.TLSPub`, opt-in), and HTTPS serving in `cmd/fid-proxy` gated by **`FIDPROXY_TLS=1`**.
-The gate keeps the current plain-HTTP + app-layer-E2EE path as default. **Do NOT flip
-`FIDPROXY_TLS=1` in production until T5** (verifier checks the TLS↔attestation binding) — and
-note that turning it on rebuilds the enclave ⇒ **new measurement**, so it needs a re-seal of
-BYOK + a registry update. Next: T5 (verifier), then T4 (evidence surfacing) + T7 (fold exchange).
+The gate keeps the current plain-HTTP + app-layer-E2EE path as default.
+
+**T5 landed too** — the verify SDK (`cli/fidrouter_cli/verify.py`, `sdk/python`, the platform's
+vendored copy) and the Go `cmd/client` now (a) fold `tls_pub` into the recomputed bind and
+(b) fetch the server's presented TLS cert and **fail closed if its key ≠ the attested
+`tls_pub`** (MITM). For https the verifier trusts the attestation, not the CA (unverified TLS
+context). Backward-compatible: plain-HTTP enclaves have no `tls_pub` → behaviour unchanged.
+Proven end-to-end against the real binary (`FIDPROXY_TLS=1`, mock attester): positive verifies,
+a mismatched cert is refused.
+
+**Still gated OFF in prod.** Turning `FIDPROXY_TLS=1` on rebuilds the enclave ⇒ **new
+measurement** ⇒ re-seal BYOK + registry update, and the released CLI wheel must be re-cut
+(`cli-v0.1.1`) so users get the T5 verifier. Next: T4 (surface evidence) + T7 (fold exchange).
 
 ## Tasks (ordered; suggested path 1→2→3→5→7→6/8→9)
 

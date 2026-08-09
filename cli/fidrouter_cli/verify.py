@@ -125,16 +125,47 @@ def _canonical_receipt(r: dict) -> bytes:
     ).encode()
 
 
+def _tls_ctx(url: str):
+    """RA-TLS: for https we do NOT validate the CA — trust comes from the attestation
+    (we match the presented cert's key against the attested tls_pub). Returns an
+    unverified SSLContext for https, None for http."""
+    if url.startswith("https://"):
+        import ssl
+        return ssl._create_unverified_context()
+    return None
+
+
 def _http_get(url: str) -> dict:
-    with urllib.request.urlopen(url, timeout=20) as resp:
+    with urllib.request.urlopen(url, timeout=20, context=_tls_ctx(url)) as resp:
         return json.loads(resp.read())
+
+
+def _peer_spki(base_url: str):
+    """RA-TLS: return the DER SubjectPublicKeyInfo of the server's TLS cert, or None
+    if base_url isn't https. We do NOT trust the CA here — attestation is the trust
+    anchor; we only need the presented key to compare against the attested one."""
+    from urllib.parse import urlparse
+    u = urlparse(base_url)
+    if u.scheme != "https":
+        return None
+    import socket
+    import ssl
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+    ctx = ssl._create_unverified_context()
+    with socket.create_connection((u.hostname, u.port or 443), timeout=15) as sock:
+        with ctx.wrap_socket(sock, server_hostname=u.hostname) as ss:
+            der = ss.getpeercert(binary_form=True)
+    cert = x509.load_der_x509_certificate(der)
+    return cert.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
 
 
 def _http_post(url: str, body: dict) -> tuple[int, bytes]:
     data = json.dumps(body).encode()
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=20, context=_tls_ctx(url)) as resp:
             return resp.status, resp.read()
     except urllib.error.HTTPError as e:
         return e.code, e.read()
@@ -233,10 +264,25 @@ class FidClient:
             raise FidVerificationError("quote signature invalid")
         if q["nonce"] != nonce_hex.encode():
             raise FidVerificationError("enclave did not echo our nonce (possible replay)")
-        rd = hashlib.sha256(q["nonce"] + q["ephemeral_pub"]).hexdigest()
+        rd = hashlib.sha256(q["nonce"] + q["ephemeral_pub"] + self._tls_binding(qj)).hexdigest()
         if rd != q["report_data"]:
             raise FidVerificationError("report_data not bound to nonce+key (possible replay)")
         return q
+
+    def _tls_binding(self, qj: dict) -> bytes:
+        """RA-TLS: if the quote binds a TLS cert key (tls_pub), fold it into the bind AND
+        require the cert the server actually presented (over https) to match it — else a
+        proxy could relay a valid quote while terminating TLS itself (MITM). Returns the
+        bound SPKI (b'' when the quote has no TLS binding, e.g. plain-HTTP enclaves)."""
+        tp = qj.get("tls_pub")
+        if not tp:
+            return b""
+        spki = _b64d(tp)
+        peer = _peer_spki(self.base_url)
+        if peer is not None and peer != spki:
+            raise FidVerificationError(
+                "RA-TLS: server TLS cert does not match the attested TLS key (possible MITM)")
+        return spki
 
     def _verify_tdx(self, qj: dict, nonce_hex: str) -> dict:
         """Real-hardware path: verify an Intel TDX quote via DCAP (skeleton).
@@ -252,7 +298,7 @@ class FidClient:
             raise FidVerificationError("enclave did not echo our nonce (possible replay)")
         # report_data (first 32B) binds nonce + channel key + receipt-signing key,
         # so DCAP-verifying the quote anchors ALL THREE to the attested measurement.
-        expected_rd = hashlib.sha256(nonce_echo + eph + idpub).digest()
+        expected_rd = hashlib.sha256(nonce_echo + eph + idpub + self._tls_binding(qj)).digest()
         backend = self.dcap_backend or (
             dcap.QvlBackend(self.pccs_url) if self.pccs_url else dcap.StubBackend())
         try:
@@ -275,7 +321,7 @@ class FidClient:
         nonce_echo = _b64d(qj["nonce"])
         if nonce_echo != nonce_hex.encode():
             raise FidVerificationError("enclave did not echo our nonce (possible replay)")
-        expected_bind = hashlib.sha256(nonce_echo + eph + idpub).hexdigest()
+        expected_bind = hashlib.sha256(nonce_echo + eph + idpub + self._tls_binding(qj)).hexdigest()
 
         claims = self._cs_verify_jwt(token)
         if claims.get("iss") != CS_ISS:

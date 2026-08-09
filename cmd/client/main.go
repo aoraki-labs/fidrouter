@@ -63,7 +63,11 @@ func main() {
 	if !bytes.Equal(q.Nonce, []byte(nonceHex)) {
 		failClosed("enclave did not echo our nonce (possible replay)")
 	}
-	rd := sha256.Sum256(append(append([]byte{}, q.Nonce...), q.EphemeralPub...))
+	rdIn := append(append([]byte{}, q.Nonce...), q.EphemeralPub...)
+	if len(q.TLSPub) > 0 { // RA-TLS: the TLS cert key is folded into the bind
+		rdIn = append(rdIn, q.TLSPub...)
+	}
+	rd := sha256.Sum256(rdIn)
 	if hex.EncodeToString(rd[:]) != q.ReportData {
 		failClosed("report_data not bound to nonce+key (possible replay)")
 	}
