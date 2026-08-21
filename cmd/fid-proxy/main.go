@@ -52,6 +52,11 @@ type upstreamReq struct {
 	Messages []chatMsg
 }
 
+// tlsHolder owns the in-enclave TLS key + the certificate currently served. Package-level
+// because RA-TLS is a process-wide property of the listener, not per-request state; nil when
+// RA-TLS is off (plain HTTP), which the /tls-* handlers check.
+var tlsHolder *ratls.Holder
+
 type server struct {
 	at       tee.Attester
 	km       kms.KeyProvider
@@ -210,6 +215,8 @@ func main() {
 	http.HandleFunc("/v1/infer", s.handleInfer)                     // sealed/attested path (verify SDK)
 	http.HandleFunc("/v1/chat/completions", s.handleChatCompletions) // OpenAI-compatible drop-in
 	http.HandleFunc("/v1/models", s.handleModels)
+	http.HandleFunc("/tls-csr", s.handleTLSCSR)   // T9: CSR for the attested in-enclave TLS key
+	http.HandleFunc("/tls-cert", s.handleTLSCert) // T9: install a CA-signed chain for that key
 
 	addr := envOr("FIDPROXY_ADDR", ":9090")
 
@@ -219,15 +226,29 @@ func main() {
 	// build. Default stays plain HTTP until the verifier learns the binding (T5).
 	if os.Getenv("FIDPROXY_TLS") == "1" {
 		hosts := strings.Split(envOr("FIDPROXY_TLS_HOSTS", "enclave.fidcore.xyz"), ",")
-		cert, spki, err := ratls.Generate(hosts)
+		// T9: with FIDPROXY_TLS_KEY_MODE=identity the TLS key is derived from the identity
+		// seed, so it is STABLE across restarts and a publicly-trusted certificate issued
+		// over it stays valid — per-boot keys would need a fresh ACME issuance on every
+		// restart, which the rate limits don't allow. Default stays per-boot (a leaked TLS
+		// key is useless after a restart); the key never leaves the enclave either way.
+		var seed []byte
+		if os.Getenv("FIDPROXY_TLS_KEY_MODE") == "identity" {
+			if len(idPriv) == 0 {
+				log.Fatalf("[fid-proxy] FIDPROXY_TLS_KEY_MODE=identity but no identity key available")
+			}
+			seed = idPriv.Seed() // domain-separated inside ratls; never the identity key itself
+		}
+		h, err := ratls.New(hosts, seed)
 		if err != nil {
 			log.Fatalf("[fid-proxy] ra-tls cert: %v", err)
 		}
-		at.SetTLSPub(spki)
-		log.Printf("[fid-proxy] RA-TLS on: TLS pubkey (%d-byte SPKI) bound into attestation; platform=%s measurement=%s addr=%s",
-			len(spki), at.Platform(), at.Measurement(), addr)
+		tlsHolder = h
+		at.SetTLSPub(h.SPKI())
+		log.Printf("[fid-proxy] RA-TLS on: TLS pubkey (%d-byte SPKI) bound into attestation; key=%s platform=%s measurement=%s addr=%s",
+			len(h.SPKI()), map[bool]string{true: "identity-derived", false: "per-boot"}[len(seed) > 0],
+			at.Platform(), at.Measurement(), addr)
 		srv := &http.Server{Addr: addr, TLSConfig: &tls.Config{
-			Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}}
+			GetCertificate: h.GetCertificate, MinVersion: tls.VersionTLS12}}
 		log.Fatal(srv.ListenAndServeTLS("", ""))
 	}
 
@@ -609,6 +630,54 @@ func (s *server) authClaims(cred string) (token.Claims, error) {
 		return token.Claims{}, err
 	}
 	return token.Verify(s.cpPub, tok)
+}
+
+// handleTLSCSR (T9) returns a CSR for the enclave's attested TLS key so an ACME client
+// running OUTSIDE can obtain a publicly-trusted certificate for it. Public information: a
+// CSR reveals the public key (already in the attestation) and proves key possession.
+func (s *server) handleTLSCSR(w http.ResponseWriter, r *http.Request) {
+	if tlsHolder == nil {
+		http.Error(w, "RA-TLS is not enabled on this enclave", 404)
+		return
+	}
+	csr, err := tlsHolder.CSRPEM()
+	if err != nil {
+		http.Error(w, "csr: "+err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-pem-file")
+	_, _ = w.Write(csr)
+}
+
+// handleTLSCert (T9) installs an externally-issued certificate chain for the enclave's own
+// TLS key, letting a stock HTTPS client validate via a public CA while a verifying client
+// still checks the attestation binding. Safe by construction: InstallChain refuses any chain
+// whose public key is not this enclave's attested key, so no one can install a certificate
+// for a key they hold. A capability token is still required, to keep this operator-only.
+func (s *server) handleTLSCert(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST a PEM chain", 405)
+		return
+	}
+	if tlsHolder == nil {
+		http.Error(w, "RA-TLS is not enabled on this enclave", 404)
+		return
+	}
+	if _, err := s.authClaims(bearerToken(r)); err != nil {
+		http.Error(w, "unauthorized: "+err.Error(), 401)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		http.Error(w, "read: "+err.Error(), 400)
+		return
+	}
+	if err := tlsHolder.InstallChain(body); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	log.Printf("[fid-proxy] T9: installed a CA-signed chain over the attested TLS key")
+	writeJSON(w, map[string]any{"ok": true, "ca_signed": true})
 }
 
 func (s *server) handleModels(w http.ResponseWriter, r *http.Request) {
