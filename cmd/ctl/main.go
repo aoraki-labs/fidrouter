@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -73,6 +74,9 @@ func cmdSealBYOK(args []string) {
 	pin := fs.String("pin", "", "expected measurement (optional but recommended)")
 	account := fs.String("account", "", "if set with -token, also POST /byok to provision it")
 	tok := fs.String("token", "", "capability token (authority for /byok submit)")
+	idpubPin := fs.String("idpub", "", "expected enclave identity pubkey, hex (STRONGLY recommended: "+
+		"this command does not verify the hardware quote, so pinning the identity key is what "+
+		"makes a man-in-the-middle unable to substitute its own sealing key)")
 	_ = fs.Parse(args)
 
 	upstream := *keyStr
@@ -108,12 +112,23 @@ func cmdSealBYOK(args []string) {
 	if len(idpub) == 0 {
 		idpub, _ = base64.StdEncoding.DecodeString(sp.IdentityPub)
 	}
+	if *idpubPin != "" {
+		want, err := hex.DecodeString(strings.TrimPrefix(*idpubPin, "0x"))
+		if err != nil {
+			fatal(fmt.Errorf("-idpub is not valid hex: %w", err))
+		}
+		if !bytes.Equal(want, idpub) {
+			fatal(fmt.Errorf("identity pubkey mismatch — got %x want %x (refusing to seal: "+
+				"this is not the enclave you pinned)", idpub, want))
+		}
+	}
 	if !ed25519.Verify(ed25519.PublicKey(idpub), sealingPub, sig) {
 		fatal(fmt.Errorf("sealing pubkey signature invalid — not signed by the attested enclave identity"))
 	}
 	// NOTE: full CS attestation-token verification (that this identity belongs to the
 	// pinned measurement) is done by the verify SDK on the inference path; here we pin
-	// the measurement and verify the sealing-key signature.
+	// the measurement and (with -idpub) the identity key, then verify the sealing-key
+	// signature — which only the holder of the identity seed can produce.
 	// 3) seal upstream key to sealing pub: blob = client_eph_pub || AES-GCM(shared, key)
 	eph, err := enc.NewX25519()
 	if err != nil {
@@ -131,7 +146,7 @@ func cmdSealBYOK(args []string) {
 
 	if *account != "" && *tok != "" { // submit to /byok
 		body, _ := json.Marshal(map[string]string{"token": *tok, "account": *account, "sealed": sealed})
-		resp, err := http.Post(*endpoint+"/byok", "application/json", bytes.NewReader(body))
+		resp, err := httpc().Post(*endpoint+"/byok", "application/json", bytes.NewReader(body))
 		if err != nil {
 			fatal(err)
 		}
@@ -143,8 +158,21 @@ func cmdSealBYOK(args []string) {
 	}
 }
 
+// httpc talks to an enclave that may serve RA-TLS. Under RA-TLS the certificate is
+// generated inside the enclave per boot and self-signed — there is no CA to chain to, so
+// CA validation is deliberately skipped. The trust anchor for every operation here is NOT
+// the transport: it is (a) the pinned measurement and (b) the sealing key's Ed25519
+// signature by the enclave's attested identity key, which only the real enclave (holder of
+// the identity seed) can produce. Use -idpub to pin that identity key.
+func httpc() *http.Client {
+	return &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, // nolint:gosec
+	}
+}
+
 func getJSON(url string, v any) {
-	resp, err := http.Get(url)
+	resp, err := httpc().Get(url)
 	if err != nil {
 		fatal(err)
 	}

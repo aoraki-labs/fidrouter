@@ -29,3 +29,4 @@ __pycache__/
 # CLOSED control-plane (cp-adapter, reconciler) — separate private repo, never in the public one
 control-plane/
 bin/
+pdf/
