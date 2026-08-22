@@ -13,6 +13,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -32,11 +33,11 @@ import (
 	"time"
 
 	"fidrouter/internal/config"
-	"fidrouter/pkg/enc"
 	"fidrouter/internal/kms"
+	"fidrouter/internal/routing"
+	"fidrouter/pkg/enc"
 	"fidrouter/pkg/ratls"
 	"fidrouter/pkg/receipt"
-	"fidrouter/internal/routing"
 	"fidrouter/pkg/tee"
 	"fidrouter/pkg/token"
 	"fidrouter/pkg/wire"
@@ -58,9 +59,9 @@ type upstreamReq struct {
 var tlsHolder *ratls.Holder
 
 type server struct {
-	at       tee.Attester
-	km       kms.KeyProvider
-	rt       *routing.Router
+	at           tee.Attester
+	km           kms.KeyProvider
+	rt           *routing.Router
 	cpPub        ed25519.PublicKey
 	upstream     string
 	http         *http.Client
@@ -197,26 +198,36 @@ func main() {
 
 	s := &server{
 		at: at, km: km, rt: routing.New(salt, pools),
-		cpPub:    ed25519.PublicKey(cpPubBytes),
-		upstream: envOr("UPSTREAM_URL", "http://127.0.0.1:9101/call"),
-		http:     &http.Client{Timeout: 120 * time.Second}, // real Claude turns can run tens of seconds
-		sealPriv:    sealPriv,
-		sealPub:     sealPriv.PublicKey().Bytes(),
-		byok:        map[string]string{},
+		cpPub:        ed25519.PublicKey(cpPubBytes),
+		upstream:     envOr("UPSTREAM_URL", "http://127.0.0.1:9101/call"),
+		http:         &http.Client{Timeout: 120 * time.Second}, // real Claude turns can run tens of seconds
+		sealPriv:     sealPriv,
+		sealPub:      sealPriv.PublicKey().Bytes(),
+		byok:         map[string]string{},
 		meteringURL:  os.Getenv("FIDPROXY_METERING_URL"),
 		verifyURL:    os.Getenv("FIDPROXY_VERIFY_URL"),
 		cpAdapterURL: os.Getenv("FIDPROXY_CP_ADAPTER_URL"),
 	}
 
-	http.HandleFunc("/", s.handleRoot)
-	http.HandleFunc("/attestation", s.handleAttest)
-	http.HandleFunc("/sealing", s.handleSealing)                     // operator-blind BYOK: signed sealing pubkey
-	http.HandleFunc("/byok", s.handleByok)                           // submit a runtime-sealed upstream key
-	http.HandleFunc("/v1/infer", s.handleInfer)                     // sealed/attested path (verify SDK)
-	http.HandleFunc("/v1/chat/completions", s.handleChatCompletions) // OpenAI-compatible drop-in
-	http.HandleFunc("/v1/models", s.handleModels)
-	http.HandleFunc("/tls-csr", s.handleTLSCSR)   // T9: CSR for the attested in-enclave TLS key
-	http.HandleFunc("/tls-cert", s.handleTLSCert) // T9: install a CA-signed chain for that key
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", s.handleRoot)
+	mux.HandleFunc("/attestation", s.handleAttest)
+	mux.HandleFunc("/sealing", s.handleSealing)                     // operator-blind BYOK: signed sealing pubkey
+	mux.HandleFunc("/byok", s.handleByok)                           // submit a runtime-sealed upstream key
+	mux.HandleFunc("/v1/infer", s.handleInfer)                      // sealed/attested path (verify SDK)
+	mux.HandleFunc("/v1/chat/completions", s.handleChatCompletions) // OpenAI-compatible drop-in
+	mux.HandleFunc("/v1/models", s.handleModels)
+	mux.HandleFunc("/tls-csr", s.handleTLSCSR)   // T9: CSR for the attested in-enclave TLS key
+	mux.HandleFunc("/tls-cert", s.handleTLSCert) // T9: install a CA-signed chain for that key
+
+	// One managed enclave serves many relay operators, so a raw gateway key alone is not
+	// enough to tell WHOSE gateway should validate it. Callers of a shared enclave therefore
+	// address it as `/r/<relay-id>/v1/...`; the id is carried to the exchange so the control
+	// plane knows which operator's gateway to check the key against. The id is a routing
+	// label, not a secret and not authority: the key still has to validate, and the enclave
+	// still verifies the returned capability token offline against its baked CP key.
+	http.Handle("/r/", relayRouter(mux))
+	http.Handle("/", mux)
 
 	addr := envOr("FIDPROXY_ADDR", ":9090")
 
@@ -319,7 +330,7 @@ func (s *server) handleInfer(w http.ResponseWriter, r *http.Request) {
 
 	// 1) capability token (control plane authz) — enclave never touches user DB.
 	//    T7: in.Token may be a raw gateway key; resolveCapability exchanges it in-enclave.
-	claims, err := s.authClaims(in.Token)
+	claims, err := s.authClaims(in.Token, relayOf(r))
 	if err != nil {
 		http.Error(w, "unauthorized: "+err.Error(), 401)
 		return
@@ -588,12 +599,43 @@ func bearerToken(r *http.Request) string {
 	return ""
 }
 
+type ctxKey string
+
+const relayCtxKey ctxKey = "fid-relay-id"
+
+// relayRouter strips a `/r/<relay-id>` prefix, remembers the id on the request context, and
+// hands the rest to the normal routes — so `/r/abc/v1/chat/completions` behaves exactly like
+// `/v1/chat/completions`, just with the operator identified for key exchange.
+func relayRouter(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rest := strings.TrimPrefix(r.URL.Path, "/r/")
+		id, tail, _ := strings.Cut(rest, "/")
+		if id == "" || len(id) > 64 || strings.ContainsAny(id, "/?#") {
+			http.Error(w, "bad relay id", 400)
+			return
+		}
+		r2 := r.Clone(context.WithValue(r.Context(), relayCtxKey, id))
+		r2.URL.Path = "/" + tail
+		next.ServeHTTP(w, r2)
+	})
+}
+
+func relayOf(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if v, ok := r.Context().Value(relayCtxKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
 // resolveCapability (T7) turns a presented credential into a CP capability token. If it
 // already verifies as one, it's used as-is; otherwise — a raw gateway key (e.g. "sk-...") —
 // the enclave exchanges it via cp-adapter internally. This folds the exchange server-side so
 // a stock client just sends base_url + its own key (safe because the key only lands in the
 // enclave: over RA-TLS TLS terminates here, and on the /v1/infer path it arrives E2EE-sealed).
-func (s *server) resolveCapability(cred string) (string, error) {
+func (s *server) resolveCapability(cred, relayID string) (string, error) {
 	cred = strings.TrimSpace(cred)
 	if cred == "" {
 		return "", fmt.Errorf("missing credential")
@@ -604,7 +646,11 @@ func (s *server) resolveCapability(cred string) (string, error) {
 	if s.cpAdapterURL == "" {
 		return "", fmt.Errorf("not a capability token and no cp-adapter configured for exchange")
 	}
-	body, _ := json.Marshal(map[string]string{"key": cred})
+	exReq := map[string]string{"key": cred}
+	if relayID != "" {
+		exReq["relay_id"] = relayID // which operator's gateway should validate this key
+	}
+	body, _ := json.Marshal(exReq)
 	resp, err := s.http.Post(strings.TrimRight(s.cpAdapterURL, "/")+"/exchange", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return "", err
@@ -624,8 +670,8 @@ func (s *server) resolveCapability(cred string) (string, error) {
 }
 
 // authClaims resolves a credential (capability token OR raw gateway key) and verifies it.
-func (s *server) authClaims(cred string) (token.Claims, error) {
-	tok, err := s.resolveCapability(cred)
+func (s *server) authClaims(cred, relayID string) (token.Claims, error) {
+	tok, err := s.resolveCapability(cred, relayID)
 	if err != nil {
 		return token.Claims{}, err
 	}
@@ -663,7 +709,7 @@ func (s *server) handleTLSCert(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "RA-TLS is not enabled on this enclave", 404)
 		return
 	}
-	if _, err := s.authClaims(bearerToken(r)); err != nil {
+	if _, err := s.authClaims(bearerToken(r), relayOf(r)); err != nil {
 		http.Error(w, "unauthorized: "+err.Error(), 401)
 		return
 	}
@@ -681,7 +727,7 @@ func (s *server) handleTLSCert(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleModels(w http.ResponseWriter, r *http.Request) {
-	claims, err := s.authClaims(bearerToken(r))
+	claims, err := s.authClaims(bearerToken(r), relayOf(r))
 	if err != nil {
 		http.Error(w, "unauthorized", 401)
 		return
@@ -695,7 +741,7 @@ func (s *server) handleModels(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	// T7: accepts a capability token OR a raw gateway key (exchanged in-enclave).
-	claims, err := s.authClaims(bearerToken(r))
+	claims, err := s.authClaims(bearerToken(r), relayOf(r))
 	if err != nil {
 		http.Error(w, "unauthorized: "+err.Error(), 401)
 		return

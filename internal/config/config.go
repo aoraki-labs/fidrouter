@@ -7,11 +7,11 @@ const ProxyVersion = "fid-proxy-mock-v0.1.0"
 
 // Keys is the control material produced by `ctl init`.
 type Keys struct {
-	IdentitySeed        []byte `json:"identity_seed"`         // enclave identity Ed25519 (mock: on disk; real: KMS-sealed)
-	IdentityPub         []byte `json:"identity_pub"`          // pinned by clients
-	CPSeed              []byte `json:"cp_seed"`               // control-plane (New API) signing key
-	CPPub               []byte `json:"cp_pub"`                // pinned by the enclave to verify capability tokens
-	KMSMaster           []byte `json:"kms_master"`            // mock KMS master (real: HSM-resident)
+	IdentitySeed        []byte `json:"identity_seed"`        // enclave identity Ed25519 (mock: on disk; real: KMS-sealed)
+	IdentityPub         []byte `json:"identity_pub"`         // pinned by clients
+	CPSeed              []byte `json:"cp_seed"`              // control-plane (New API) signing key
+	CPPub               []byte `json:"cp_pub"`               // pinned by the enclave to verify capability tokens
+	KMSMaster           []byte `json:"kms_master"`           // mock KMS master (real: HSM-resident)
 	ExpectedMeasurement string `json:"expected_measurement"` // measurement KMS releases keys to
 }
 

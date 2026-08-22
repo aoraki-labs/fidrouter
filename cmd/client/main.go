@@ -1,10 +1,11 @@
 // client is the reference VERIFIER — the logic your drop-in SDK will ship. It
 // refuses to send a prompt until it has cryptographically verified the enclave:
-//   1. fetch /attestation with a fresh nonce,
-//   2. measurement == pinned reproducible-build value,
-//   3. identity pubkey == pinned value, quote signature valid,
-//   4. report_data == H(nonce || ephemeral_pub)  (freshness + key binding),
-//   -> any failure = FAIL-CLOSED (never send).
+//  1. fetch /attestation with a fresh nonce,
+//  2. measurement == pinned reproducible-build value,
+//  3. identity pubkey == pinned value, quote signature valid,
+//  4. report_data == H(nonce || ephemeral_pub)  (freshness + key binding),
+//     -> any failure = FAIL-CLOSED (never send).
+//
 // Only then does it seal the prompt to the attested key and send it, and it
 // verifies the signed receipt (incl. model == requested → no silent downgrade).
 package main

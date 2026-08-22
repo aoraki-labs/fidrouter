@@ -75,11 +75,13 @@ func NewConfidentialSpace(idPriv ed25519.PrivateKey, audience, endpoint string) 
 	return c, nil
 }
 
-func (c *ConfidentialSpace) Platform() string               { return "gcp-cs" }
-func (c *ConfidentialSpace) Measurement() string            { return c.measurement }
-func (c *ConfidentialSpace) IdentityPub() ed25519.PublicKey { return c.idPriv.Public().(ed25519.PublicKey) }
-func (c *ConfidentialSpace) Sign(msg []byte) []byte         { return ed25519.Sign(c.idPriv, msg) }
-func (c *ConfidentialSpace) SetTLSPub(spki []byte)          { c.tlsPub = spki }
+func (c *ConfidentialSpace) Platform() string    { return "gcp-cs" }
+func (c *ConfidentialSpace) Measurement() string { return c.measurement }
+func (c *ConfidentialSpace) IdentityPub() ed25519.PublicKey {
+	return c.idPriv.Public().(ed25519.PublicKey)
+}
+func (c *ConfidentialSpace) Sign(msg []byte) []byte { return ed25519.Sign(c.idPriv, msg) }
+func (c *ConfidentialSpace) SetTLSPub(spki []byte)  { c.tlsPub = spki }
 
 func (c *ConfidentialSpace) Attest(nonce []byte) (Quote, error) {
 	priv, err := enc.NewX25519()

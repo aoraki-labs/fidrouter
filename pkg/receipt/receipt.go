@@ -12,16 +12,16 @@ import (
 )
 
 type Receipt struct {
-	TsUnix       int64  `json:"ts_unix"`
-	Tenant       string `json:"tenant"`
-	Model        string `json:"model"`     // model ACTUALLY sent upstream
-	Account      string `json:"account"`   // upstream account id it was routed to
-	ReqHash      string `json:"req_hash"`  // sha256 of plaintext request (content NOT stored)
-	RespHash     string `json:"resp_hash"` // sha256 of plaintext response
-	PromptTok    int    `json:"prompt_tokens"`
-	CompletionTok int   `json:"completion_tokens"`
-	CacheHit     bool   `json:"cache_hit"`
-	Measurement  string `json:"measurement"` // binds receipt to the attested build
+	TsUnix        int64  `json:"ts_unix"`
+	Tenant        string `json:"tenant"`
+	Model         string `json:"model"`     // model ACTUALLY sent upstream
+	Account       string `json:"account"`   // upstream account id it was routed to
+	ReqHash       string `json:"req_hash"`  // sha256 of plaintext request (content NOT stored)
+	RespHash      string `json:"resp_hash"` // sha256 of plaintext response
+	PromptTok     int    `json:"prompt_tokens"`
+	CompletionTok int    `json:"completion_tokens"`
+	CacheHit      bool   `json:"cache_hit"`
+	Measurement   string `json:"measurement"` // binds receipt to the attested build
 }
 
 type Signed struct {

@@ -29,9 +29,9 @@ type Account struct {
 
 type Router struct {
 	mu    sync.Mutex
-	salt  []byte                    // per-boot; makes fp non-reversible across boots
-	pools map[string][]*Account     // poolID -> accounts
-	used  map[string]int            // accountID -> tokens used this window
+	salt  []byte                // per-boot; makes fp non-reversible across boots
+	pools map[string][]*Account // poolID -> accounts
+	used  map[string]int        // accountID -> tokens used this window
 }
 
 func New(salt []byte, pools map[string][]*Account) *Router {
