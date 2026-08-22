@@ -14,11 +14,11 @@ import gcp
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..", "..")
 REPO, IMAGE = "fidrouter", "fid-proxy"
-NEW_DIGEST = "sha256:efb093c03437be3491c52aed8a4229eeefbd295b1d27b17802200e6dceadddc2"
+NEW_DIGEST = "sha256:165d65794a4bd7c9a8d98ed46276e486cd3f790b25e01476f460695756e03946"
 
 p, z, r = gcp.project(), gcp.zone(), gcp.region()
 ar_host = f"{r}-docker.pkg.dev"
-img = f"{ar_host}/{p}/{REPO}/{IMAGE}:ratls"
+img = f"{ar_host}/{p}/{REPO}/{IMAGE}:t9tier0"
 
 # --- secrets from local config (never printed) ---
 k = json.load(open(os.path.join(ROOT, "config", "keys.json")))
