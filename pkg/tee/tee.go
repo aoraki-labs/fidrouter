@@ -27,7 +27,7 @@ import (
 	"sync"
 	"time"
 
-	"fidrouter/internal/enc"
+	"fidrouter/pkg/enc"
 )
 
 type Quote struct {

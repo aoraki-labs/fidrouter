@@ -22,7 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"fidrouter/internal/enc"
+	"fidrouter/pkg/enc"
 )
 
 const tsmReportDir = "/sys/kernel/config/tsm/report"

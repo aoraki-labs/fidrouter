@@ -32,14 +32,14 @@ import (
 	"time"
 
 	"fidrouter/internal/config"
-	"fidrouter/internal/enc"
+	"fidrouter/pkg/enc"
 	"fidrouter/internal/kms"
-	"fidrouter/internal/ratls"
-	"fidrouter/internal/receipt"
+	"fidrouter/pkg/ratls"
+	"fidrouter/pkg/receipt"
 	"fidrouter/internal/routing"
-	"fidrouter/internal/tee"
-	"fidrouter/internal/token"
-	"fidrouter/internal/wire"
+	"fidrouter/pkg/tee"
+	"fidrouter/pkg/token"
+	"fidrouter/pkg/wire"
 )
 
 type chatMsg struct {

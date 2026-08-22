@@ -22,10 +22,10 @@ import (
 	"net/http"
 	"os"
 
-	"fidrouter/internal/enc"
-	"fidrouter/internal/receipt"
-	"fidrouter/internal/tee"
-	"fidrouter/internal/wire"
+	"fidrouter/pkg/enc"
+	"fidrouter/pkg/receipt"
+	"fidrouter/pkg/tee"
+	"fidrouter/pkg/wire"
 )
 
 func main() {

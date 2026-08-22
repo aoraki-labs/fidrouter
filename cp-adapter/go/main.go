@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"fidrouter/internal/config"
-	"fidrouter/internal/token"
+	"fidrouter/pkg/token"
 )
 
 // New API on the AWS box uses a self-signed cert on an IP; skip verification for

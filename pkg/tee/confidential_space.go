@@ -33,7 +33,7 @@ import (
 	"sync"
 	"time"
 
-	"fidrouter/internal/enc"
+	"fidrouter/pkg/enc"
 )
 
 const csSocket = "/run/container_launcher/teeserver.sock"

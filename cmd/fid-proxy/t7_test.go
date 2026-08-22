@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"fidrouter/internal/token"
+	"fidrouter/pkg/token"
 )
 
 // TestT7ResolveCapability covers the folded-exchange logic: a real capability token is

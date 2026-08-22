@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"fidrouter/internal/ratls"
+	"fidrouter/pkg/ratls"
 )
 
 // TestRATLSBinding proves the RA-TLS retrofit: SetTLSPub folds the TLS cert

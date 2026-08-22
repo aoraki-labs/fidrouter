@@ -13,7 +13,7 @@ package kms
 import (
 	"errors"
 
-	"fidrouter/internal/enc"
+	"fidrouter/pkg/enc"
 )
 
 // KeyProvider releases plaintext upstream keys to an attested caller.

@@ -25,10 +25,10 @@ import (
 	"time"
 
 	"fidrouter/internal/config"
-	"fidrouter/internal/enc"
+	"fidrouter/pkg/enc"
 	"fidrouter/internal/kms"
-	"fidrouter/internal/tee"
-	"fidrouter/internal/token"
+	"fidrouter/pkg/tee"
+	"fidrouter/pkg/token"
 )
 
 func main() {

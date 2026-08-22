@@ -2,7 +2,7 @@
 // so they can never drift apart.
 package wire
 
-import "fidrouter/internal/receipt"
+import "fidrouter/pkg/receipt"
 
 type InferReq struct {
 	Session   string `json:"session"`
