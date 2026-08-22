@@ -59,15 +59,16 @@ type upstreamReq struct {
 var tlsHolder *ratls.Holder
 
 type server struct {
-	at           tee.Attester
-	km           kms.KeyProvider
-	rt           *routing.Router
-	cpPub        ed25519.PublicKey
-	upstream     string
-	http         *http.Client
-	meteringURL  string // if set, each signed receipt (metadata, NO content) is POSTed here
-	verifyURL    string // shown on the root page so a human can go verify
-	cpAdapterURL string // if set, a raw gateway key is exchanged here for a capability token (T7)
+	at                tee.Attester
+	km                kms.KeyProvider
+	rt                *routing.Router
+	cpPub             ed25519.PublicKey
+	upstream          string
+	http              *http.Client
+	meteringURL       string // if set, each signed receipt (metadata, NO content) is POSTed here
+	verifyURL         string // shown on the root page so a human can go verify
+	cpAdapterURL      string // if set, a raw gateway key is exchanged here for a capability token (T7)
+	hostedExchangeURL string // Tier 0: used INSTEAD of cpAdapterURL when the caller named a relay id
 
 	// sealed BYOK (operator-blind): a per-boot X25519 keypair generated INSIDE
 	// the enclave (RAM only, never persisted, operator never sees the private
@@ -198,15 +199,16 @@ func main() {
 
 	s := &server{
 		at: at, km: km, rt: routing.New(salt, pools),
-		cpPub:        ed25519.PublicKey(cpPubBytes),
-		upstream:     envOr("UPSTREAM_URL", "http://127.0.0.1:9101/call"),
-		http:         &http.Client{Timeout: 120 * time.Second}, // real Claude turns can run tens of seconds
-		sealPriv:     sealPriv,
-		sealPub:      sealPriv.PublicKey().Bytes(),
-		byok:         map[string]string{},
-		meteringURL:  os.Getenv("FIDPROXY_METERING_URL"),
-		verifyURL:    os.Getenv("FIDPROXY_VERIFY_URL"),
-		cpAdapterURL: os.Getenv("FIDPROXY_CP_ADAPTER_URL"),
+		cpPub:             ed25519.PublicKey(cpPubBytes),
+		upstream:          envOr("UPSTREAM_URL", "http://127.0.0.1:9101/call"),
+		http:              &http.Client{Timeout: 120 * time.Second}, // real Claude turns can run tens of seconds
+		sealPriv:          sealPriv,
+		sealPub:           sealPriv.PublicKey().Bytes(),
+		byok:              map[string]string{},
+		meteringURL:       os.Getenv("FIDPROXY_METERING_URL"),
+		verifyURL:         os.Getenv("FIDPROXY_VERIFY_URL"),
+		cpAdapterURL:      os.Getenv("FIDPROXY_CP_ADAPTER_URL"),
+		hostedExchangeURL: os.Getenv("FIDPROXY_HOSTED_EXCHANGE_URL"),
 	}
 
 	mux := http.NewServeMux()
@@ -643,15 +645,24 @@ func (s *server) resolveCapability(cred, relayID string) (string, error) {
 	if _, err := token.Verify(s.cpPub, cred); err == nil {
 		return cred, nil // already a capability token
 	}
-	if s.cpAdapterURL == "" {
-		return "", fmt.Errorf("not a capability token and no cp-adapter configured for exchange")
+	// Tier 0 vs Tier 1. A caller that addressed us as /r/<relay-id> is served by the hosted
+	// exchange (the operator runs nothing); everyone else goes to the operator's own
+	// cp-adapter, which is the path where we never see their users' keys. Both URLs are
+	// BAKED into the image, so the measurement pins where a raw gateway key may be sent —
+	// the one place such a key leaves the enclave.
+	target := s.cpAdapterURL
+	if relayID != "" && s.hostedExchangeURL != "" {
+		target = s.hostedExchangeURL
+	}
+	if target == "" {
+		return "", fmt.Errorf("not a capability token and no exchange configured")
 	}
 	exReq := map[string]string{"key": cred}
 	if relayID != "" {
 		exReq["relay_id"] = relayID // which operator's gateway should validate this key
 	}
 	body, _ := json.Marshal(exReq)
-	resp, err := s.http.Post(strings.TrimRight(s.cpAdapterURL, "/")+"/exchange", "application/json", bytes.NewReader(body))
+	resp, err := s.http.Post(strings.TrimRight(target, "/")+"/exchange", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}

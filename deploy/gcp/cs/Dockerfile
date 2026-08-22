@@ -24,7 +24,9 @@ ENV FIDPROXY_ATTESTER=gcp-cs \
     FIDPROXY_VERIFY_URL=https://app.fidcore.xyz \
     FIDPROXY_TLS=1 \
     FIDPROXY_TLS_HOSTS=enclave.fidcore.xyz,34.158.56.83 \
-    FIDPROXY_CP_ADAPTER_URL=https://cp.fidcore.xyz
+    FIDPROXY_CP_ADAPTER_URL=https://cp.fidcore.xyz \
+    FIDPROXY_HOSTED_EXCHANGE_URL=https://app.fidcore.xyz/api/cp \
+    FIDPROXY_TLS_KEY_MODE=identity
 # RA-TLS + the cp-adapter endpoint are BAKED IN on purpose (they carry no secret), so the
 # measured image proves (a) TLS terminates in-enclave with its key bound into attestation and
 # (b) exactly which cp-adapter a raw gateway key may be exchanged with — the latter matters
