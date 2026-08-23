@@ -236,5 +236,10 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8091"))
-    print(f"cp-adapter on :{port}  newapi={NEWAPI_BASE}  enclave={ENCLAVE_URL}")
-    ThreadingHTTPServer(("0.0.0.0", port), H).serve_forever()
+    # Bind loopback by default. cp-adapter answers "is this key valid" and mints spend
+    # authority, so it should not be reachable from the internet just because the host has a
+    # public IP. Set BIND=0.0.0.0 deliberately if the enclave (or clients) must reach it from
+    # off-box, and put it behind TLS/an allowlist when you do.
+    bind = os.environ.get("BIND", "127.0.0.1")
+    print(f"cp-adapter on {bind}:{port}  newapi={NEWAPI_BASE}  enclave={ENCLAVE_URL}")
+    ThreadingHTTPServer((bind, port), H).serve_forever()

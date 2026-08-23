@@ -74,3 +74,20 @@ that silently passes is worse than no gate. Create the group in New API under
 would in fact be wrong (it would let your gateway relay that lane and see plaintext).
 
 See [THREAT_MODEL.md](THREAT_MODEL.md) for exactly what this component can and cannot do.
+
+## Verifying the installer before you run it
+
+`enable.sh` runs as root on your host, so it is published here and what the platform serves
+is **byte-identical**. Check both before piping it into a shell:
+
+```bash
+curl -fsSL https://app.fidcore.xyz/enable.sh -o enable.sh
+sha256sum enable.sh          # expect: 5141a9a2fc2faf4e6903174f2f0acd39e20690a4ce2e530fe76f5ff7c5a40a6f
+bash enable.sh --dry-run     # prints exactly what it would do, changes nothing
+```
+
+It installs into one directory with its own venv (your system Python is untouched), downloads
+`adapter.py` **pinned to a commit** and verifies its sha256 before running it, runs as a
+dedicated non-root user, and binds `127.0.0.1`. It does not read, modify, proxy or restart
+your gateway, and it never sees a prompt. The last lines it prints are the commands to remove
+everything it installed.
