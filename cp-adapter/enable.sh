@@ -25,8 +25,8 @@ set -euo pipefail
 # ---- pinned artifact ------------------------------------------------------------------
 # Pinned to a COMMIT, not a branch: a branch means "whatever was there the second you ran
 # this". The checksum is verified before the file is ever executed.
-PIN_COMMIT="${PIN_COMMIT:-1e8953a1cf7f609b090951d10ba8219210054e7d}"
-PIN_SHA256="${PIN_SHA256:-496eb0a9e79b34f51ce2c947ad92a18e2ab92048904e692799aec478532c8c3c}"
+PIN_COMMIT="${PIN_COMMIT:-e175d77040d2aaacc15aa0b0607d6d464361f6e5}"
+PIN_SHA256="${PIN_SHA256:-ce57c30a1744755ea9e1cfef00f7cb5c83220a2151c0c19378a45f0394e18be8}"
 RAW="https://raw.githubusercontent.com/aoraki-labs/fidrouter/${PIN_COMMIT}/cp-adapter/adapter.py"
 PLATFORM="${PLATFORM:-https://app.fidcore.xyz}"
 

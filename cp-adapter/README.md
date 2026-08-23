@@ -82,7 +82,7 @@ is **byte-identical**. Check both before piping it into a shell:
 
 ```bash
 curl -fsSL https://app.fidcore.xyz/enable.sh -o enable.sh
-sha256sum enable.sh          # expect: 5141a9a2fc2faf4e6903174f2f0acd39e20690a4ce2e530fe76f5ff7c5a40a6f
+sha256sum enable.sh          # expect: 2aceba2bdd5b49a709363ba563522c609c958fcb0db92fc41e91dee46be3ce38
 bash enable.sh --dry-run     # prints exactly what it would do, changes nothing
 ```
 
