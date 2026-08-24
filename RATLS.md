@@ -42,10 +42,23 @@ cp-adapter (`FIDPROXY_CP_ADAPTER_URL`) when the credential isn't already a capab
 test `TestT7ResolveCapability` covers passthrough / exchange / refuse-without-adapter. Safe
 because the key only lands in-enclave (RA-TLS terminates TLS here; `/v1/infer` is E2EE-sealed).
 
-**Still gated OFF in prod.** Turning `FIDPROXY_TLS=1` (+ `FIDPROXY_CP_ADAPTER_URL`) on rebuilds
-the enclave ⇒ **new measurement** ⇒ re-seal BYOK + registry update, and the released CLI wheel
-must be re-cut (`cli-v0.1.1`) so users get the T5 verifier. Remaining: T4 (surface evidence),
-T6 (registry anchor), T8 (rotation), T9 (attestation-CA), T10 (repro + tamper test).
+**LIVE in prod (2026-08-23).** RA-TLS is on: the enclave serves
+`https://enclave.fidcore.xyz:9090`, its per-boot TLS key is bound into the attestation, and
+the registry + CLI verify that binding. `FIDPROXY_TLS`/`TLS_HOSTS`/`CP_ADAPTER_URL` are BAKED
+into the image rather than injected — the hardened Confidential Space launcher refuses to
+start a workload when a non-allowlisted `tee-env` is supplied (which cost us one outage), and
+baking is also stronger: the measurement now proves TLS terminates in-enclave and proves where
+a raw gateway key may be sent.
+
+**T9 landed in code, not yet live**: the attestation binds the KEY, not the certificate, so a
+publicly-trusted cert can be served over the same key (`GET /tls-csr` → ACME outside →
+`POST /tls-cert`, which refuses any chain whose leaf key isn't the attested one).
+`FIDPROXY_TLS_KEY_MODE=identity` makes the key stable across restarts so an issued cert stays
+valid. Remaining: the external ACME/DNS-01 client. Until then a plain browser or `curl` sees a
+self-signed certificate and warns; the SDK/CLI verify the attestation binding instead.
+
+**Remaining:** T4 (surface evidence), T6 (registry anchor), T8 (rotation), T9's ACME client,
+T10 (repro + tamper test).
 
 ## Tasks (ordered; suggested path 1→2→3→5→7→6/8→9)
 

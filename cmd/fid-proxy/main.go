@@ -979,12 +979,18 @@ func (s *server) handleByok(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", 400)
 		return
 	}
-	if _, err := token.Verify(s.cpPub, in.Token); err != nil {
+	// Resolve through authClaims (not token.Verify against the baked key) for two reasons:
+	// a delegated operator signs with THEIR own CP key, so verifying against ours would lock
+	// them out entirely; and we need to know WHICH key authorised this in order to file the
+	// upstream key under it. Storing and reading must use the same namespace — they didn't
+	// once, and the effect was a key that could be injected but never resolved.
+	_, provisioner, err := s.authClaims(in.Token, relayOf(r))
+	if err != nil {
 		http.Error(w, "unauthorized: "+err.Error(), 401)
 		return
 	}
-	blob, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(in.Sealed, "sealed:"))
-	if err != nil || len(blob) < 33 {
+	blob, decErr := base64.StdEncoding.DecodeString(strings.TrimPrefix(in.Sealed, "sealed:"))
+	if decErr != nil || len(blob) < 33 {
 		http.Error(w, "bad sealed blob", 400)
 		return
 	}
@@ -994,10 +1000,11 @@ func (s *server) handleByok(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.byokMu.Lock()
-	s.byok[in.Account] = string(pt)
+	s.byok[byokKey(provisioner, in.Account)] = string(pt)
 	s.byokMu.Unlock()
 	writeJSON(w, map[string]any{"ok": true, "account": in.Account})
-	log.Printf("[byok] provisioned account=%s (%d bytes, RAM only)", in.Account, len(pt))
+	log.Printf("[byok] provisioned account=%s for cp=%s… (%d bytes, RAM only)",
+		in.Account, hex.EncodeToString(provisioner)[:12], len(pt))
 }
 
 func (s *server) unsealBYOK(blob []byte) ([]byte, error) {

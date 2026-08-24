@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""cp-adapter — CLOSED control-plane glue between a New API instance and the
-(open, verifiable) fidrouter enclave.
+"""cp-adapter — the control-plane bridge between YOUR gateway and the fidrouter enclave.
+Open source (Apache-2.0): you install it on your own machine and it holds your signing seed,
+so you have to be able to read it. See THREAT_MODEL.md for what it can and cannot do.
 
 Why it exists: the enclave must NOT touch the user database, and New API must NOT
 sit in the data path (it would see plaintext → breaks no-log). So this tiny
 sidecar bridges them:
 
-    client's New API `sk-` token  ──POST /exchange──▶  cp-adapter
-        cp-adapter validates the sk- against New API (billing/subscription),
+    a user's gateway key  ──POST /exchange──▶  cp-adapter
+        cp-adapter validates it via the configured validator (see validators.py),
         derives a content-free tenant id, and MINTS a capability token
         (Ed25519, signed by the control-plane key the enclave pins)
     ◀── { capability_token, enclave_url, expected_measurement, verify_url }
@@ -15,10 +16,9 @@ sidecar bridges them:
 Then the client goes DIRECT to the enclave (E2EE prompt + Bearer capability_token);
 neither New API nor cp-adapter ever sees a prompt.
 
-This file is CLOSED SOURCE (control plane). It depends only on the PUBLIC token
-format — it does not embed any enclave secret. The one secret it holds is the
-control-plane signing seed (CP_SEED_HEX), which is the private half of the cp_pub
-the open image bakes in.
+It depends only on the PUBLIC token format and embeds no enclave secret. The one secret it
+holds is your control-plane signing seed (CP_SEED_HEX) — the private half of the cp_pub the
+enclave trusts for you. It never leaves this machine, and we never receive it.
 
     CP_SEED_HEX=<hex ed25519 seed> NEWAPI_BASE=https://207.57.187.193 \
     ENCLAVE_URL=http://<ip>:9090 EXPECTED_MEASUREMENT=sha256:... \
