@@ -9,7 +9,7 @@ set -euo pipefail
 KEY=/home/ubuntu/toma/awskey-high-privilege-admin-20260801
 BOX=ubuntu@52.15.198.116
 SSH="ssh -o StrictHostKeyChecking=no -i $KEY $BOX"
-NEW_MEAS="sha256:165d65794a4bd7c9a8d98ed46276e486cd3f790b25e01476f460695756e03946"
+NEW_MEAS="sha256:6d6fa8627f50c821d5f242ece76da844edd6f6ba86241780893f5deaaea143c5"
 IDPUB="f8546d03ebc1aac4c974fdeb4d34662b26ce818539070e5a0e936a608cb35f95"
 ENCLAVE_HTTPS="https://enclave.fidcore.xyz:9090"
 
