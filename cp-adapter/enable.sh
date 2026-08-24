@@ -25,9 +25,11 @@ set -euo pipefail
 # ---- pinned artifact ------------------------------------------------------------------
 # Pinned to a COMMIT, not a branch: a branch means "whatever was there the second you ran
 # this". The checksum is verified before the file is ever executed.
-PIN_COMMIT="${PIN_COMMIT:-e175d77040d2aaacc15aa0b0607d6d464361f6e5}"
-PIN_SHA256="${PIN_SHA256:-ce57c30a1744755ea9e1cfef00f7cb5c83220a2151c0c19378a45f0394e18be8}"
-RAW="https://raw.githubusercontent.com/aoraki-labs/fidrouter/${PIN_COMMIT}/cp-adapter/adapter.py"
+PIN_COMMIT="${PIN_COMMIT:-047286594f0cf3551ca1d0da3eb05a2e8c80d4a1}"
+PIN_SHA256_VALIDATORS="${PIN_SHA256_VALIDATORS:-03b0cb32842bc91a6679c19fcb03dab4f10e0e31d0cc62ebb0d60dd3a700f86c}"
+PIN_SHA256="${PIN_SHA256:-27d914d335d24979ecb32ee7cd425756640a9c5a783730d09fa08799ad9257b1}"
+RAW_BASE="https://raw.githubusercontent.com/aoraki-labs/fidrouter/${PIN_COMMIT}/cp-adapter"
+RAW="$RAW_BASE/adapter.py"
 PLATFORM="${PLATFORM:-https://app.fidcore.xyz}"
 
 DIR="${DIR:-/opt/cp-adapter}"
@@ -97,8 +99,8 @@ cat <<PLAN
 [fidrouter] plan
   install dir      : $DIR            (created; nothing else on this host is modified)
   python           : $DIR/venv       (private venv — your system Python is untouched)
-  adapter.py       : $RAW
-                     sha256 verified against $PIN_SHA256
+  files            : $RAW_BASE/{adapter.py,validators.py}
+                     each sha256-verified before it is installed or run
   service          : /etc/systemd/system/cpadapter.service, enabled at boot
   runs as          : user "$SVC_USER" (created if missing), NOT root
   listens on       : $BIND:$PORT     (loopback by default — not reachable off-box)
@@ -135,18 +137,23 @@ $SUDO "$DIR/venv/bin/pip" install --quiet --upgrade pip >/dev/null 2>&1 || true
 $SUDO "$DIR/venv/bin/pip" install --quiet cryptography
 
 # fetch pinned adapter to a temp file, verify, and only then install it
-TMP="$(mktemp)"; trap 'rm -f "$TMP"' EXIT
-say "downloading pinned adapter.py"
-curl -fsSL --max-time 30 "$RAW" -o "$TMP"
-GOT="$(sha256sum "$TMP" | cut -d' ' -f1)"
-if [ "$GOT" != "$PIN_SHA256" ]; then
-  echo "[fidrouter] ABORT: checksum mismatch for adapter.py" >&2
-  echo "            expected $PIN_SHA256" >&2
-  echo "            got      $GOT" >&2
-  exit 1
-fi
-say "checksum ok ($GOT)"
-$SUDO install -m 0644 "$TMP" "$DIR/adapter.py"
+TMPD="$(mktemp -d)"; trap 'rm -rf "$TMPD"' EXIT
+fetch_verify(){ # fetch_verify <file> <expected-sha256>
+  say "downloading pinned $1"
+  curl -fsSL --max-time 30 "$RAW_BASE/$1" -o "$TMPD/$1"
+  local got; got="$(sha256sum "$TMPD/$1" | cut -d' ' -f1)"
+  if [ "$got" != "$2" ]; then
+    echo "[fidrouter] ABORT: checksum mismatch for $1" >&2
+    echo "            expected $2" >&2
+    echo "            got      $got" >&2
+    exit 1
+  fi
+  say "  checksum ok"
+}
+fetch_verify adapter.py    "$PIN_SHA256"
+fetch_verify validators.py "$PIN_SHA256_VALIDATORS"
+$SUDO install -m 0644 "$TMPD/adapter.py"    "$DIR/adapter.py"
+$SUDO install -m 0644 "$TMPD/validators.py" "$DIR/validators.py"
 
 if [ -z "${CP_SEED_HEX:-}" ]; then
   # The seed is generated HERE, on your machine, and never leaves it. Only the public half

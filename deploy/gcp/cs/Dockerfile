@@ -25,12 +25,12 @@ ENV FIDPROXY_ATTESTER=gcp-cs \
     FIDPROXY_TLS=1 \
     FIDPROXY_TLS_HOSTS=enclave.fidcore.xyz,34.158.56.83 \
     FIDPROXY_CP_ADAPTER_URL=https://cp.fidcore.xyz \
-    FIDPROXY_HOSTED_EXCHANGE_URL=https://app.fidcore.xyz/api/cp \
     FIDPROXY_TLS_KEY_MODE=identity
-# RA-TLS + the cp-adapter endpoint are BAKED IN on purpose (they carry no secret), so the
-# measured image proves (a) TLS terminates in-enclave with its key bound into attestation and
-# (b) exactly which cp-adapter a raw gateway key may be exchanged with — the latter matters
-# because that is the one place a user's gateway key leaves the enclave. They are deliberately
+# RA-TLS + the DEFAULT cp-adapter endpoint are BAKED IN on purpose (they carry no secret), so
+# the measured image proves (a) TLS terminates in-enclave with its key bound into attestation
+# and (b) where a raw gateway key may be sent when no relay id was named — the one place such
+# a key leaves the enclave. For a relay-addressed request the destination comes instead from a
+# delegation the operator counter-signed, so it cannot be redirected by us either. They are deliberately
 # NOT in allow_env_override below: the hardened CS launcher refuses to start a workload when a
 # non-allowlisted tee-env is supplied, and more importantly an operator must not be able to
 # silently redirect key exchange. A dedicated-enclave partner rebuilds with their own URL,
