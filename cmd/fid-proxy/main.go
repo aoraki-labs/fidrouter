@@ -35,6 +35,7 @@ import (
 	"fidrouter/internal/config"
 	"fidrouter/internal/kms"
 	"fidrouter/internal/routing"
+	"fidrouter/pkg/delegation"
 	"fidrouter/pkg/enc"
 	"fidrouter/pkg/ratls"
 	"fidrouter/pkg/receipt"
@@ -59,16 +60,18 @@ type upstreamReq struct {
 var tlsHolder *ratls.Holder
 
 type server struct {
-	at                tee.Attester
-	km                kms.KeyProvider
-	rt                *routing.Router
-	cpPub             ed25519.PublicKey
-	upstream          string
-	http              *http.Client
-	meteringURL       string // if set, each signed receipt (metadata, NO content) is POSTed here
-	verifyURL         string // shown on the root page so a human can go verify
-	cpAdapterURL      string // if set, a raw gateway key is exchanged here for a capability token (T7)
-	hostedExchangeURL string // Tier 0: used INSTEAD of cpAdapterURL when the caller named a relay id
+	at           tee.Attester
+	km           kms.KeyProvider
+	rt           *routing.Router
+	cpPub        ed25519.PublicKey
+	upstream     string
+	http         *http.Client
+	meteringURL  string // if set, each signed receipt (metadata, NO content) is POSTed here
+	verifyURL    string // shown on the root page so a human can go verify
+	cpAdapterURL string // if set, a raw gateway key is exchanged here for a capability token (T7)
+	// Multi-operator support: with a delegation each relay operator holds their OWN signing
+	// key, so no single control-plane key is an authority over everyone on this enclave.
+	dels *delegation.Store
 
 	// sealed BYOK (operator-blind): a per-boot X25519 keypair generated INSIDE
 	// the enclave (RAM only, never persisted, operator never sees the private
@@ -199,19 +202,22 @@ func main() {
 
 	s := &server{
 		at: at, km: km, rt: routing.New(salt, pools),
-		cpPub:             ed25519.PublicKey(cpPubBytes),
-		upstream:          envOr("UPSTREAM_URL", "http://127.0.0.1:9101/call"),
-		http:              &http.Client{Timeout: 120 * time.Second}, // real Claude turns can run tens of seconds
-		sealPriv:          sealPriv,
-		sealPub:           sealPriv.PublicKey().Bytes(),
-		byok:              map[string]string{},
-		meteringURL:       os.Getenv("FIDPROXY_METERING_URL"),
-		verifyURL:         os.Getenv("FIDPROXY_VERIFY_URL"),
-		cpAdapterURL:      os.Getenv("FIDPROXY_CP_ADAPTER_URL"),
-		hostedExchangeURL: os.Getenv("FIDPROXY_HOSTED_EXCHANGE_URL"),
+		cpPub:        ed25519.PublicKey(cpPubBytes),
+		upstream:     envOr("UPSTREAM_URL", "http://127.0.0.1:9101/call"),
+		http:         &http.Client{Timeout: 120 * time.Second}, // real Claude turns can run tens of seconds
+		sealPriv:     sealPriv,
+		sealPub:      sealPriv.PublicKey().Bytes(),
+		byok:         map[string]string{},
+		meteringURL:  os.Getenv("FIDPROXY_METERING_URL"),
+		verifyURL:    os.Getenv("FIDPROXY_VERIFY_URL"),
+		cpAdapterURL: os.Getenv("FIDPROXY_CP_ADAPTER_URL"),
+		// Root of the delegation chain. Defaults to the baked CP key so a single-operator
+		// enclave behaves exactly as before; a multi-operator one bakes a dedicated root.
+		dels: delegation.NewStore(rootCPPub(cpPubBytes)),
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/delegation", s.handleDelegation) // push a root+partner-signed delegation
 	mux.HandleFunc("/", s.handleRoot)
 	mux.HandleFunc("/attestation", s.handleAttest)
 	mux.HandleFunc("/sealing", s.handleSealing)                     // operator-blind BYOK: signed sealing pubkey
@@ -332,7 +338,7 @@ func (s *server) handleInfer(w http.ResponseWriter, r *http.Request) {
 
 	// 1) capability token (control plane authz) — enclave never touches user DB.
 	//    T7: in.Token may be a raw gateway key; resolveCapability exchanges it in-enclave.
-	claims, err := s.authClaims(in.Token, relayOf(r))
+	claims, signer, err := s.authClaims(in.Token, relayOf(r))
 	if err != nil {
 		http.Error(w, "unauthorized: "+err.Error(), 401)
 		return
@@ -371,7 +377,7 @@ func (s *server) handleInfer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 5) attestation-gated key release (fails if measurement != expected).
-	upKey, err := s.resolveKey(acct)
+	upKey, err := s.resolveKey(acct, signer)
 	if err != nil {
 		http.Error(w, "kms: "+err.Error(), 502)
 		return
@@ -601,6 +607,39 @@ func bearerToken(r *http.Request) string {
 	return ""
 }
 
+// rootCPPub picks the delegation root: FID_ROOT_CP_PUB if set, else the baked CP key.
+func rootCPPub(baked []byte) ed25519.PublicKey {
+	if h := strings.TrimSpace(os.Getenv("FID_ROOT_CP_PUB")); h != "" {
+		if b, err := hex.DecodeString(h); err == nil && len(b) == ed25519.PublicKeySize {
+			return ed25519.PublicKey(b)
+		}
+		log.Printf("[fid-proxy] WARNING: FID_ROOT_CP_PUB is not %d-byte hex — ignoring", ed25519.PublicKeySize)
+	}
+	return ed25519.PublicKey(baked)
+}
+
+// handleDelegation accepts a delegation for a relay operator. Unauthenticated on purpose: the
+// document carries its own root + partner signatures, so an attacker who can reach this
+// endpoint still cannot install one, and we need no trusted transport. Delegations live in
+// RAM, so they must be re-pushed after a restart (same as sealed BYOK).
+func (s *server) handleDelegation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST a delegation", 405)
+		return
+	}
+	var d delegation.Delegation
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&d); err != nil {
+		http.Error(w, "bad json: "+err.Error(), 400)
+		return
+	}
+	if err := s.dels.Put(&d); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	log.Printf("[delegation] accepted relay=%s adapter=%s (total %d)", d.RelayID, d.CPAdapterURL, s.dels.Len())
+	writeJSON(w, map[string]any{"ok": true, "relay_id": d.RelayID})
+}
+
 type ctxKey string
 
 const relayCtxKey ctxKey = "fid-relay-id"
@@ -642,17 +681,19 @@ func (s *server) resolveCapability(cred, relayID string) (string, error) {
 	if cred == "" {
 		return "", fmt.Errorf("missing credential")
 	}
-	if _, err := token.Verify(s.cpPub, cred); err == nil {
-		return cred, nil // already a capability token
-	}
-	// Tier 0 vs Tier 1. A caller that addressed us as /r/<relay-id> is served by the hosted
-	// exchange (the operator runs nothing); everyone else goes to the operator's own
-	// cp-adapter, which is the path where we never see their users' keys. Both URLs are
-	// BAKED into the image, so the measurement pins where a raw gateway key may be sent —
-	// the one place such a key leaves the enclave.
+	signer := s.cpPub
 	target := s.cpAdapterURL
-	if relayID != "" && s.hostedExchangeURL != "" {
-		target = s.hostedExchangeURL
+	if relayID != "" {
+		d := s.dels.Get(relayID)
+		if d == nil {
+			return "", fmt.Errorf("unknown or expired relay id %q", relayID)
+		}
+		// Both of these come from a delegation that the operator counter-signed, so an
+		// operator's users' keys can only ever be sent to the adapter THEY named.
+		signer, target = ed25519.PublicKey(d.PartnerCPPub), d.CPAdapterURL
+	}
+	if _, err := token.Verify(signer, cred); err == nil {
+		return cred, nil // already a capability token
 	}
 	if target == "" {
 		return "", fmt.Errorf("not a capability token and no exchange configured")
@@ -681,12 +722,27 @@ func (s *server) resolveCapability(cred, relayID string) (string, error) {
 }
 
 // authClaims resolves a credential (capability token OR raw gateway key) and verifies it.
-func (s *server) authClaims(cred, relayID string) (token.Claims, error) {
+// authClaims resolves a credential and returns both the claims and the PUBLIC KEY that
+// authorised them. The caller needs that key because an upstream key may only be read by
+// whoever provisioned it — see resolveKey.
+func (s *server) authClaims(cred, relayID string) (token.Claims, ed25519.PublicKey, error) {
+	signer := s.cpPub
+	if relayID != "" {
+		d := s.dels.Get(relayID)
+		if d == nil {
+			return token.Claims{}, nil, fmt.Errorf("unknown or expired relay id %q — the operator's delegation must be pushed to this enclave", relayID)
+		}
+		signer = ed25519.PublicKey(d.PartnerCPPub)
+	}
 	tok, err := s.resolveCapability(cred, relayID)
 	if err != nil {
-		return token.Claims{}, err
+		return token.Claims{}, nil, err
 	}
-	return token.Verify(s.cpPub, tok)
+	c, err := token.Verify(signer, tok)
+	if err != nil {
+		return token.Claims{}, nil, err
+	}
+	return c, signer, nil
 }
 
 // handleTLSCSR (T9) returns a CSR for the enclave's attested TLS key so an ACME client
@@ -720,7 +776,7 @@ func (s *server) handleTLSCert(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "RA-TLS is not enabled on this enclave", 404)
 		return
 	}
-	if _, err := s.authClaims(bearerToken(r), relayOf(r)); err != nil {
+	if _, _, err := s.authClaims(bearerToken(r), relayOf(r)); err != nil {
 		http.Error(w, "unauthorized: "+err.Error(), 401)
 		return
 	}
@@ -738,7 +794,7 @@ func (s *server) handleTLSCert(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleModels(w http.ResponseWriter, r *http.Request) {
-	claims, err := s.authClaims(bearerToken(r), relayOf(r))
+	claims, _, err := s.authClaims(bearerToken(r), relayOf(r))
 	if err != nil {
 		http.Error(w, "unauthorized", 401)
 		return
@@ -752,7 +808,7 @@ func (s *server) handleModels(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	// T7: accepts a capability token OR a raw gateway key (exchanged in-enclave).
-	claims, err := s.authClaims(bearerToken(r), relayOf(r))
+	claims, signer, err := s.authClaims(bearerToken(r), relayOf(r))
 	if err != nil {
 		http.Error(w, "unauthorized: "+err.Error(), 401)
 		return
@@ -787,7 +843,7 @@ func (s *server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no upstream account in pool "+claims.Pool, 502)
 		return
 	}
-	upKey, err := s.resolveKey(acct)
+	upKey, err := s.resolveKey(acct, signer)
 	if err != nil {
 		http.Error(w, "kms: "+err.Error(), 502)
 		return
@@ -872,17 +928,24 @@ func shortMeas(s string) string {
 // resolveKey returns the upstream key for an account: from KMS/passthrough
 // unseal, or — for "sealed-runtime" accounts (empty Sealed) — from the RAM BYOK
 // store populated by /byok. The operator never has the plaintext.
-func (s *server) resolveKey(acct *routing.Account) ([]byte, error) {
+// byokKey namespaces a provisioned upstream key by the CP key that provisioned it. That
+// single change is what stops one operator (or us) from spending another operator's sealed
+// key on a shared enclave: you can only look up what you yourself put in.
+func byokKey(provisioner ed25519.PublicKey, account string) string {
+	return hex.EncodeToString(provisioner) + "|" + account
+}
+
+func (s *server) resolveKey(acct *routing.Account, provisioner ed25519.PublicKey) ([]byte, error) {
 	k, err := s.km.Unseal(acct.Sealed, s.at.Measurement())
 	if err != nil {
 		return nil, err
 	}
 	if len(k) == 0 {
 		s.byokMu.Lock()
-		v := s.byok[acct.ID]
+		v := s.byok[byokKey(provisioner, acct.ID)]
 		s.byokMu.Unlock()
 		if v == "" {
-			return nil, fmt.Errorf("account %q has no upstream key yet — seal one to /sealing then POST /byok", acct.ID)
+			return nil, fmt.Errorf("account %q has no upstream key for this operator — seal one to /sealing then POST /byok", acct.ID)
 		}
 		return []byte(v), nil
 	}

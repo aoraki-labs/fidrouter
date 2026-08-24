@@ -37,7 +37,7 @@ func TestT7ResolveCapability(t *testing.T) {
 		t.Fatalf("capability passthrough: got=%q err=%v", got, err)
 	}
 	// 2) a raw key is exchanged, and the resulting token verifies to the exchanged tenant
-	claims, err := s.authClaims("sk-raw-user-key", "")
+	claims, _, err := s.authClaims("sk-raw-user-key", "")
 	if err != nil {
 		t.Fatalf("exchange path failed: %v", err)
 	}
