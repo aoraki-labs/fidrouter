@@ -60,13 +60,12 @@ one by New API **group**, so you decide — and can price — which keys get it:
 
 ```bash
 ALLOWED_GROUPS=enclave          # only keys in this group may mint a capability token
-NEWAPI_ADMIN_TOKEN=…            # PREFERRED: how the group is resolved (revocable)
-NEWAPI_ADMIN_USER_ID=1
-# Fallback for colocated installs. Off unless explicitly enabled, because the New API
-# database holds every user's key in plaintext — far more authority than this needs:
-# ALLOW_DB_GROUP_LOOKUP=1
-# NEWAPI_DB=/path/to/one-api.db
 ```
+
+The group comes from your **validator** — cp-adapter no longer reads anyone's user table.
+Choose how your gateway is asked (`http` for a purpose-built endpoint, `exec` for anything
+else, `newapi` for a stock New API): see
+**[docs/GATEWAY_INTEGRATION.md](../docs/GATEWAY_INTEGRATION.md)**.
 
 If a key's group cannot be **proven**, the exchange refuses to mint (fail-closed) — a gate
 that silently passes is worse than no gate. Create the group in New API under

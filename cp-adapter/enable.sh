@@ -43,6 +43,7 @@ while [ $# -gt 0 ]; do
     --port) PORT="$2"; shift ;;
     --bind) BIND="$2"; shift ;;
     --user) SVC_USER="$2"; shift ;;
+    --validator) VALIDATOR="$2"; shift ;;
     -h|--help) sed -n '2,25p' "$0" 2>/dev/null || true; exit 0 ;;
     *) echo "unknown flag: $1" >&2; exit 2 ;;
   esac
@@ -82,6 +83,9 @@ read -r REG_URL REG_MEAS <<<"$(fetch_managed)" || true
 ask NEWAPI_BASE "Your gateway base URL (e.g. https://gateway.example.com)"
 ask ENCLAVE_URL "Enclave URL" "${REG_URL:-}"
 ask EXPECTED_MEASUREMENT "Enclave measurement (sha256:...)" "${REG_MEAS:-}"
+# How your gateway is asked "is this key valid" — newapi | http | exec.
+# See docs/GATEWAY_INTEGRATION.md. Defaults to newapi, which works unmodified.
+VALIDATOR="${VALIDATOR:-newapi}"
 VERIFY_URL="${VERIFY_URL:-$PLATFORM}"
 MODELS="${MODELS:-claude-opus-5,claude-sonnet-5,claude-haiku-4-5-20251001}"
 
@@ -99,6 +103,7 @@ cat <<PLAN
   runs as          : user "$SVC_USER" (created if missing), NOT root
   listens on       : $BIND:$PORT     (loopback by default — not reachable off-box)
   gateway          : $NEWAPI_BASE    (read-only: validates a key, reads remaining quota)
+  validator        : $VALIDATOR       (how your gateway is asked; see GATEWAY_INTEGRATION.md)
   enclave          : $ENCLAVE_URL
   measurement      : $EXPECTED_MEASUREMENT
   CP keypair       : generated LOCALLY; the seed is written to $DIR/cpadapter.env (0600,
@@ -165,6 +170,7 @@ ENCLAVE_URL=$ENCLAVE_URL
 EXPECTED_MEASUREMENT=$EXPECTED_MEASUREMENT
 VERIFY_URL=$VERIFY_URL
 MODELS=$MODELS
+VALIDATOR=$VALIDATOR
 PORT=$PORT
 BIND=$BIND
 EOF

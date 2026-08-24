@@ -28,11 +28,13 @@ Be clear-eyed — this is a privileged component:
    spend against your account pool, for any tenant id it chooses.
 2. **See gateway keys in transit.** Every `POST /exchange` carries a user's key. A malicious
    build could exfiltrate them.
-3. **See your whole user table — only if you enable the DB fallback.** `ALLOW_DB_GROUP_LOOKUP=1`
-   + `NEWAPI_DB` lets it read the New API database, which stores **every user's API key in
-   plaintext**. That is far more authority than group resolution needs. **Prefer
-   `NEWAPI_ADMIN_TOKEN`** (a credential you mint and can revoke); the DB path exists for
-   air-gapped/colocated setups and is off unless you turn it on.
+3. **Whatever authority YOU give the validator.** How a key is checked is a pluggable
+   validator you configure (`http`, `exec`, `newapi` — see
+   [GATEWAY_INTEGRATION.md](../docs/GATEWAY_INTEGRATION.md)), so the privilege sits where you
+   put it: a purpose-built `/fid/validate` endpoint answers one question and needs nothing
+   else, while a script that reads your database has whatever access you grant it. cp-adapter
+   itself no longer contains any code that reads a user table — the old
+   `ALLOW_DB_GROUP_LOOKUP` path was removed for exactly this reason.
 4. **Network position** next to your gateway.
 
 Mitigations that are yours to apply: run it on the gateway host and bind it to localhost (or
@@ -70,9 +72,10 @@ can read the source of.
 
 ## Known weaknesses (we would rather you hear them from us)
 
-- **`ALLOW_DB_GROUP_LOOKUP` is over-privileged** for what it does. It is opt-in and
-  documented, but if New API ever exposes a token-auth endpoint that returns a key's group,
-  this fallback should be deleted.
+- **The `newapi` validator reads a dashboard endpoint**, which is a de-facto contract rather
+  than an API, and without an admin token it reports the user's limit rather than the token's
+  own remaining quota — so it can over-grant. Prefer the `http` validator where you control
+  the gateway.
 - **The CP seed is a hot key on disk/in env** on your host. Compromise of that host means an
   attacker can mint capability tokens until you rotate the keypair (which changes the
   enclave measurement). Long term this belongs in an HSM/KMS.
