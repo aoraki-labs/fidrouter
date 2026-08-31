@@ -60,12 +60,16 @@ type upstreamReq struct {
 var tlsHolder *ratls.Holder
 
 type server struct {
-	at           tee.Attester
-	km           kms.KeyProvider
-	rt           *routing.Router
-	cpPub        ed25519.PublicKey
-	upstream     string
-	http         *http.Client
+	at       tee.Attester
+	km       kms.KeyProvider
+	rt       *routing.Router
+	cpPub    ed25519.PublicKey
+	upstream string
+	http     *http.Client
+	// upstreamHTTP is deliberately separate from http: only requests carrying
+	// provider credentials use this client. Control-plane and metering requests
+	// retain their existing client and configuration.
+	upstreamHTTP *http.Client
 	meteringURL  string // if set, each signed receipt (metadata, NO content) is POSTed here
 	verifyURL    string // shown on the root page so a human can go verify
 	cpAdapterURL string // if set, a raw gateway key is exchanged here for a capability token (T7)
@@ -205,6 +209,7 @@ func main() {
 		cpPub:        ed25519.PublicKey(cpPubBytes),
 		upstream:     envOr("UPSTREAM_URL", "http://127.0.0.1:9101/call"),
 		http:         &http.Client{Timeout: 120 * time.Second}, // real Claude turns can run tens of seconds
+		upstreamHTTP: newProviderHTTPClient(),
 		sealPriv:     sealPriv,
 		sealPub:      sealPriv.PublicKey().Bytes(),
 		byok:         map[string]string{},
@@ -419,29 +424,106 @@ func (s *server) handleInfer(w http.ResponseWriter, r *http.Request) {
 }
 
 // allowedUpstreamHosts is part of the MEASURED code: the enclave will only ever
-// forward to these real first-party provider endpoints, never to an arbitrary
-// (possibly logging) middleman. Because this list is in the open-source, measured
-// binary, "the upstream is really Anthropic/OpenAI, not another relay" is provable
-// from the measurement + TLS, not merely promised. Adding a provider is a reviewed
-// code change → new measurement → re-audit.
+// initiate provider requests to these HTTPS hostnames. TLS still relies on the
+// system CA roots and proves the peer controls a certificate for this hostname;
+// it cannot prove what a provider's closed backend does with a request. Adding a
+// provider is a reviewed code change -> new measurement -> re-audit.
 var allowedUpstreamHosts = map[string]bool{
 	"api.anthropic.com": true,
 	"api.openai.com":    true,
 }
 
+// validateUpstreamBaseURL accepts only the exact first-party HTTPS origins that
+// the measured relay is intended to call. Paths, query strings, fragments and
+// userinfo are rejected so a configured value cannot alter the endpoint or leak
+// credentials through URL syntax. An explicit :443 is normalized away.
+func validateUpstreamBaseURL(raw string) (*url.URL, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, fmt.Errorf("upstream URL is empty")
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u == nil {
+		return nil, fmt.Errorf("upstream URL is malformed")
+	}
+	if u.Scheme != "https" {
+		return nil, fmt.Errorf("upstream URL must use https")
+	}
+	if u.User != nil {
+		return nil, fmt.Errorf("upstream URL must not contain userinfo")
+	}
+	if u.Host == "" || u.Hostname() == "" {
+		return nil, fmt.Errorf("upstream URL must include a hostname")
+	}
+	host := strings.ToLower(u.Hostname())
+	if !allowedUpstreamHosts[host] {
+		return nil, fmt.Errorf("upstream hostname is not in the measured allow-list")
+	}
+	if port := u.Port(); port != "" && port != "443" {
+		return nil, fmt.Errorf("upstream URL must use port 443")
+	}
+	if u.Path != "" && u.Path != "/" {
+		return nil, fmt.Errorf("upstream URL must not contain a path")
+	}
+	if u.RawPath != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawFragment != "" || u.Opaque != "" {
+		return nil, fmt.Errorf("upstream URL must not contain path, query or fragment data")
+	}
+	if strings.HasSuffix(u.Host, ":") {
+		return nil, fmt.Errorf("upstream URL must use a valid port")
+	}
+	// Return a canonical origin so later endpoint concatenation cannot preserve
+	// an alternate host spelling or an explicit port.
+	return &url.URL{Scheme: "https", Host: host}, nil
+}
+
+// newProviderHTTPClient is the only client used for requests that carry an
+// upstream provider key. It does normal CA/hostname verification, ignores
+// HTTP(S)_PROXY environment variables, and refuses redirects so credentials
+// cannot be forwarded to another host.
+func newProviderHTTPClient() *http.Client {
+	baseTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		baseTransport = &http.Transport{}
+	}
+	transport := baseTransport.Clone()
+	transport.Proxy = nil
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	} else {
+		transport.TLSClientConfig = transport.TLSClientConfig.Clone()
+		if transport.TLSClientConfig.MinVersion < tls.VersionTLS12 {
+			transport.TLSClientConfig.MinVersion = tls.VersionTLS12
+		}
+	}
+	return &http.Client{
+		Transport: transport,
+		Timeout:   120 * time.Second,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return fmt.Errorf("upstream redirects are disabled")
+		},
+	}
+}
+
+func (s *server) providerHTTPClient() *http.Client {
+	if s.upstreamHTTP != nil {
+		return s.upstreamHTTP
+	}
+	return newProviderHTTPClient()
+}
+
 // forward dispatches by provider: Anthropic Messages API, OpenAI-compatible
 // /v1/chat/completions (BYOK / managed real key), else the mock upstream.
 func (s *server) forward(baseURL, apiKey, provider string, r upstreamReq) (wire.UpstreamResp, error) {
+	baseURL = strings.TrimSpace(baseURL)
+	if provider == "anthropic" && baseURL == "" {
+		baseURL = "https://api.anthropic.com"
+	}
 	if baseURL != "" {
-		u, err := url.Parse(baseURL)
-		if err != nil || !allowedUpstreamHosts[u.Host] {
-			return wire.UpstreamResp{}, fmt.Errorf("upstream host %q not in measured allow-list (real providers only)", func() string {
-				if u != nil {
-					return u.Host
-				}
-				return baseURL
-			}())
+		u, err := validateUpstreamBaseURL(baseURL)
+		if err != nil {
+			return wire.UpstreamResp{}, err
 		}
+		baseURL = u.String()
 	}
 	if provider == "anthropic" {
 		return s.forwardAnthropic(baseURL, apiKey, r)
@@ -482,7 +564,7 @@ func (s *server) forwardOpenAI(baseURL, apiKey string, r upstreamReq) (wire.Upst
 	req, _ := http.NewRequest("POST", strings.TrimRight(baseURL, "/")+"/v1/chat/completions", bytes.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
-	resp, err := s.http.Do(req)
+	resp, err := s.providerHTTPClient().Do(req)
 	if err != nil {
 		return wire.UpstreamResp{}, err
 	}
@@ -554,7 +636,7 @@ func (s *server) forwardAnthropic(baseURL, apiKey string, r upstreamReq) (wire.U
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
-	resp, err := s.http.Do(req)
+	resp, err := s.providerHTTPClient().Do(req)
 	if err != nil {
 		return wire.UpstreamResp{}, err
 	}

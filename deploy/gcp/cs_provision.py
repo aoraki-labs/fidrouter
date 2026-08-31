@@ -77,7 +77,11 @@ def main():
     # 3) docker login + REPRODUCIBLE buildx build+push (SOURCE_DATE_EPOCH + rewrite-timestamp
     # → deterministic digest; scripts/reproduce.sh yields the same digest from source).
     tok = gcp.token()
-    sh(*DOCKER, "login", "-u", "oauth2accesstoken", "-p", tok, ar_host)
+    # Never put the short-lived OAuth token in argv or the progress log: both
+    # are visible to local process observers and can be retained by CI output.
+    print("+", " ".join([*DOCKER, "login", "-u", "oauth2accesstoken", "--password-stdin", ar_host]))
+    subprocess.run([*DOCKER, "login", "-u", "oauth2accesstoken", "--password-stdin", ar_host],
+                   input=tok + "\n", text=True, check=True)
     # push + rewrite-timestamp require the docker-container driver (default 'docker' driver can't)
     subprocess.run([*DOCKER, "buildx", "create", "--name", "fidbuilder",
                     "--driver", "docker-container", "--use"], capture_output=True, text=True)

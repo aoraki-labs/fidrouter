@@ -2,6 +2,13 @@
   "_comment": "PUBLIC verification registry \u2014 the neutral trust anchor. Maps each measured build to its open-source commit + reproducible-build recipe, and lists the endpoints that should be running it. The verification service live-checks each endpoint's attestation against this. This MUST be run independently of any relay operator (an operator who controls the verifier can fake it).",
   "source_url": "https://github.com/aoraki-labs/fidrouter",
   "builds": {
+    "sha256:8d306d528fe5cd4e1b2da6a58cdfff2840705f452420707545c931d7948b4456": {
+      "name": "fidrouter data plane (strict HTTPS provider egress, no proxy, no redirects)",
+      "source": "cmd/fid-proxy (Apache-2.0)",
+      "reproducible_build": "bash scripts/reproduce.sh",
+      "identity_pub_hex": "f8546d03ebc1aac4c974fdeb4d34662b26ce818539070e5a0e936a608cb35f95",
+      "published_at": "2026-08-31"
+    },
     "sha256:f870be1a530283d4304e0e513b15498cd858c3b1bb0017c483db73251fe78030": {
       "name": "fidrouter data plane (RA-TLS, multi-operator delegation, reproducible, sealed BYOK, metering)",
       "source": "cmd/fid-proxy (Apache-2.0)",
@@ -15,7 +22,7 @@
       "name": "claude-official",
       "platform": "GCP Confidential Space \u00b7 Intel TDX",
       "base_url": "https://enclave.fidcore.xyz:9090",
-      "expected_measurement": "sha256:f870be1a530283d4304e0e513b15498cd858c3b1bb0017c483db73251fe78030",
+      "expected_measurement": "sha256:8d306d528fe5cd4e1b2da6a58cdfff2840705f452420707545c931d7948b4456",
       "cs_audience": "fidrouter",
       "notes": "RA-TLS: TLS terminates inside the enclave and its public key is bound into the attestation, so verify the binding (the SDK does) rather than a CA \u2014 the per-boot certificate is self-signed by design."
     }

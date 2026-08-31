@@ -9,7 +9,7 @@ set -euo pipefail
 KEY=/home/ubuntu/toma/awskey-high-privilege-admin-20260801
 BOX=ubuntu@52.15.198.116
 SSH="ssh -o StrictHostKeyChecking=no -i $KEY $BOX"
-NEW_MEAS="sha256:f870be1a530283d4304e0e513b15498cd858c3b1bb0017c483db73251fe78030"
+NEW_MEAS="sha256:8d306d528fe5cd4e1b2da6a58cdfff2840705f452420707545c931d7948b4456"
 IDPUB="f8546d03ebc1aac4c974fdeb4d34662b26ce818539070e5a0e936a608cb35f95"
 ENCLAVE_HTTPS="https://enclave.fidcore.xyz:9090"
 
@@ -48,4 +48,4 @@ $SSH "cd /home/ubuntu/fidcore-platform && pm2 restart fidcore-platform >/dev/nul
 echo "   /api/verify:"
 curl -s https://app.fidcore.xyz/api/verify | python3 -c 'import sys,json;[print(" ",e["name"],e["ok"],e.get("detail","")[:70]) for e in json.load(sys.stdin)]'
 
-echo "== DONE. Remember to also update repo registry.json + config/keys.json expected_measurement to $NEW_MEAS and commit. =="
+echo "== DONE. Commit registry.json with $NEW_MEAS. config/keys.json expected_measurement is the local binary/KMS pin and is not the GCP image digest. =="

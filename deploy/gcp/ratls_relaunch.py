@@ -14,7 +14,7 @@ import gcp
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..", "..")
 REPO, IMAGE = "fidrouter", "fid-proxy"
-NEW_DIGEST = "sha256:f870be1a530283d4304e0e513b15498cd858c3b1bb0017c483db73251fe78030"
+NEW_DIGEST = "sha256:8d306d528fe5cd4e1b2da6a58cdfff2840705f452420707545c931d7948b4456"
 
 p, z, r = gcp.project(), gcp.zone(), gcp.region()
 ar_host = f"{r}-docker.pkg.dev"
